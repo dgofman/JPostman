@@ -4,7 +4,7 @@
 ![Java](https://img.shields.io/badge/Java-11%2B-orange)
 ![Maven](https://img.shields.io/badge/Maven-3.x-blue)
 ![Coverage](https://codecov.io/gh/dgofman/JPostman/branch/main/graph/badge.svg)
-![License](https://img.shields.io/github/license/dgofman/JPostman?cacheSeconds=60)
+![License](https://img.shields.io/github/license/dgofman/JPostman)
 
 **JPostman** is a small Java helper library that lets you reuse exported **Postman collections** and **Postman environments** directly in Java tests.
 
@@ -116,6 +116,54 @@ Response response = req.apply(given())
         .response();
 ```
 
+## Request Execution API
+
+JPostman separates **request configuration** from **request execution**.
+
+```java
+req.apply(given())
+```
+
+Useful when additional Rest Assured customization is needed:
+
+```java
+req.apply(given())
+    .auth().oauth2(token)
+    .log().all()
+    .when()
+    .get(req.getUrl());
+```
+
+---
+
+### Configure + Execute
+
+```java
+req.execute(given())
+```
+
+Automatically:
+1. applies request configuration
+2. executes the HTTP method defined in the Postman collection
+
+Supported methods:
+- GET
+- POST
+- PUT
+- PATCH
+- DELETE
+- HEAD
+- OPTIONS
+
+Example:
+
+```java
+Response response = req.execute(given())
+        .then()
+        .statusCode(200)
+        .extract()
+        .response();
+```
 ---
 
 ## Fluent Request Overrides

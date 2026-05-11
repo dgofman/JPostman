@@ -67,9 +67,7 @@ public class TestRestAssured {
 		log.debug("REQUEST AFTER:  " + req.toString());
 
 		// Execute login request and validate access token is returned.
-		Response response = req.apply(given())
-				// .log().all()
-				.post(req.getUrl())
+		Response response = req.execute(given())
 				.then()
 				.log().ifValidationFails()
 				.statusCode(200)
@@ -119,9 +117,7 @@ public class TestRestAssured {
 		Request req = template.builder().build(env);
 
 		// Execute product list request and verify response contains pagination limit.
-		req.apply(given())
-				// .log().all()
-				.get(req.getUrl())
+		req.execute(given())
 				.then()
 				.log().ifValidationFails()
 				.statusCode(200)
@@ -142,9 +138,7 @@ public class TestRestAssured {
 		Request req = template.builder().build(env);
 
 		// Execute single product request and verify product id exists.
-		req.apply(given())
-				// .log().all()
-				.get(req.getUrl())
+		req.execute(given())
 				.then()
 				.log().ifValidationFails()
 				.statusCode(200)
@@ -179,8 +173,7 @@ public class TestRestAssured {
 		log.debug("REQUEST 2: " + req2.toString());
 
 		// Execute original image request.
-		Response response1 = req1.apply(given())
-				.get(req1.getUrl())
+		Response response1 = req1.execute(given())
 				.then()
 				.log().ifValidationFails()
 				.statusCode(200)
@@ -188,8 +181,7 @@ public class TestRestAssured {
 				.response();
 
 		// Execute modified image request.
-		Response response2 = req2.apply(given())
-				.get(req2.getUrl())
+		Response response2 = req2.execute(given())
 				.then()
 				.log().ifValidationFails()
 				.statusCode(200)

@@ -1,8 +1,19 @@
 package io.jpostman;
 
+import static io.jpostman.Constants.ALL_PRODUCTS;
+import static io.jpostman.Constants.COLLECTION_FILE;
+import static io.jpostman.Constants.ENVIRONMENT_FILE;
+import static io.jpostman.Constants.ENV_TOKEN_KEY;
+import static io.jpostman.Constants.GET_AUTH_USER;
+import static io.jpostman.Constants.LOGIN_GET_TOKEN;
+import static io.jpostman.Constants.PRODUCT_FOLDER;
+import static io.jpostman.Constants.TEST_USERNAME;
+import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -11,9 +22,7 @@ import org.testng.annotations.Test;
 
 import com.google.gson.JsonParser;
 
-import io.restassured.RestAssured;
-
-import static io.jpostman.Constants.*;
+import io.restassured.specification.RequestSpecification;
 
 /**
  * Validates collection parsing, component parsing, builder behavior,
@@ -36,6 +45,80 @@ public class TestCoverage {
 
 		folder = col.getFolder(PRODUCT_FOLDER);
 		folder.print();
+	}
+	
+	// -------------------------------------------------------------------------
+	// Test Environment
+	// -------------------------------------------------------------------------
+
+	@Test
+	public void testLoadFileEnvironment() throws Exception {
+		// environment file: loading by path should match classpath-loaded environment
+		Environment env = Environment.load("src/main/resources/" + ENVIRONMENT_FILE);
+		assertEquals(this.env.toString(), env.toString());
+
+		// collection environment: load environment from file path
+		col.loadEnvironment("src/main/resources/" + ENVIRONMENT_FILE);
+	}
+
+	@Test
+	public void testLoadResourceEnvironment() throws Exception {
+		// environment resource: loading by stream should match initialized environment
+		Environment env = Environment.load(TestCoverage.class.getClassLoader().getResourceAsStream(ENVIRONMENT_FILE));
+		assertEquals(this.env.toString(), env.toString());
+	}
+
+	@Test
+	public void testLoadStringEnvironment() throws Exception {
+		Environment env;
+
+		// environment: name present → parsed name
+		env = Environment.load(JsonParser.parseString("{\"name\":\"TEST_NAME\"}").getAsJsonObject());
+		assertEquals(env.getName(), "TEST_NAME");
+
+		// environment: name absent → default name
+		env = Environment.load(JsonParser.parseString("{}").getAsJsonObject());
+		assertEquals(env.getName(), "Unknown Environment");
+		env.print();
+
+		// environment values: key absent and enabled=false → skipped
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"value\":\"v\",\"enabled\":false}]}").getAsJsonObject());
+		assertEquals(env.getParams().size(), 0);
+
+		// environment values: key absent and enabled=true → skipped
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"value\":\"v\",\"enabled\":true}]}").getAsJsonObject());
+		assertEquals(env.getParams().size(), 0);
+
+		// environment values: value absent → stored as ""
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\"}]}").getAsJsonObject());
+		assertEquals(env.get("apikey"), "");
+		env.print();
+	}
+
+	@Test(expectedExceptions = IllegalArgumentException.class,
+			expectedExceptionsMessageRegExp = "Environment key not found: 'NEW_KEY'")
+	public void testEnvSetThrowWhenKeyNotFound() {
+		Environment source = new Environment("Test Env");
+
+		// environment builder: add creates new key
+		Environment target1 = source.builder().add("NEW_KEY", TEST_USERNAME).end();
+
+		// environment builder: set existing key updates value
+		Environment target2 = target1.builder().set("NEW_KEY", ENV_TOKEN_KEY).end();
+
+		// environment builder: resolve adds values from map
+		Environment target3 = target2.builder().resolve(Map.of("OLD_KEY", TEST_USERNAME)).end();
+
+		assertEquals(target1.toString(), "  NEW_KEY                             = " + TEST_USERNAME + "\n");
+		assertEquals(target2.toString(), "  NEW_KEY                             = " + ENV_TOKEN_KEY + "\n");
+		assertEquals(target3.toString(), "  NEW_KEY                             = " + ENV_TOKEN_KEY + "\n"
+				+ "  OLD_KEY                             = " + TEST_USERNAME + "\n");
+
+		// environment builder: source remains unchanged
+		assertEquals(source.getParams().size(), 0);
+
+		// environment builder: set missing key → throws
+		source.builder().set("NEW_KEY", TEST_USERNAME);
 	}
 
 	// -------------------------------------------------------------------------
@@ -126,229 +209,6 @@ public class TestCoverage {
 		req = folder.getRequest("Unnamed");
 		assertEquals(req.toString(), "[GET   ] Unnamed                                  -> ");
 		folder.print();
-	}
-
-	// -------------------------------------------------------------------------
-	// Test Request
-	// -------------------------------------------------------------------------
-
-	@Test
-	public void testRequest() throws Exception {
-		Request request = folder.getRequest(ALL_PRODUCTS);
-
-		// request: real collection request should preserve name
-		assertEquals(request.getName(), ALL_PRODUCTS);
-	}
-
-	@Test
-	public void testRequestFromString() throws Exception {
-		Collection col;
-		Request req;
-
-		// request: url string → parsed directly
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"url\": \"http://github.com\"}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getUrl(), "http://github.com");
-		assertEquals(req.getMethod(), "GET");
-		assertEquals(req.getFolderName(), PRODUCT_FOLDER);
-		assertEquals(req.getQueries().isEmpty(), true);
-		req.print();
-
-		// request: description string → parsed directly
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"description\": \"TODO\"}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getDescription(), "TODO");
-		req.print();
-
-		// request: description null → empty string
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"description\": null}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getDescription(), "");
-
-		// request: description object without content → empty string
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"description\": {}}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getDescription(), "");
-
-		// request: description object with content → content string
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"description\": {\"content\": \"TODO\"}}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getDescription(), "TODO");
-
-		// request: url null → empty string
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"url\": null}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getUrl(), "");
-
-		// request: url object without raw → empty string
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"url\": {}}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getUrl(), "");
-
-		// request auth: v2.1 basic array value absent → stored as ""
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"auth\":{\"type\":\"basic\",\"basic\":[{\"key\":\"" + TEST_USERNAME + "\"}]}}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getAuth().toString(), "[basic] {" + TEST_USERNAME + "=}");
-		req.print();
-
-		// request header: value absent → stored as ""
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"header\":[{\"key\":\"" + TEST_USERNAME + "\"}]}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getHeader().toString(), "  " + TEST_USERNAME + "                           = \n");
-		req.print();
-
-		// request body: empty body object → none body
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"body\":{}}"
-						+ "}]}]}")
-				.getAsJsonObject());
-		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getBody().toString(), "[none]");
-		req.print();
-
-		// request apply: empty request should apply without throwing
-		req.apply(RestAssured.given());
-
-		// request apply: header + raw/json body → Rest Assured spec receives parsable request
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"request\":{\"header\":[{\"key\":\"X-Test\",\"value\":\"v\"}],"
-						+ "\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\","
-						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}")
-				.getAsJsonObject());
-		assertEquals(col.getRequests().size(), 1);
-		req = col.getRequest("Unnamed");
-		assertEquals(req.getHeader().getParams().size(), 1);
-		req.apply(RestAssured.given());
-	}
-
-	@Test(expectedExceptions = IllegalArgumentException.class,
-			expectedExceptionsMessageRegExp = "Body key not found: 'NEW_KEY'")
-	public void testRequestThrowWhenKeyNotFound() throws Exception {
-		Collection col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"body\":{}}"
-						+ "}]}]}")
-				.getAsJsonObject());
-
-		Request template = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-
-		// request builder: body add creates new key on cloned request
-		Request req = template.builder().body().add("NEW_KEY", TEST_USERNAME).end().build();
-		assertEquals(req.getBody().toString(), "[none] {\"NEW_KEY\":\"" + TEST_USERNAME + "\"}");
-
-		// request builder: body set missing key → throws
-		template.builder().body().set("NEW_KEY", TEST_USERNAME);
-	}
-
-	// -------------------------------------------------------------------------
-	// Test Environment
-	// -------------------------------------------------------------------------
-
-	@Test
-	public void testLoadFileEnvironment() throws Exception {
-		// environment file: loading by path should match classpath-loaded environment
-		Environment env = Environment.load("src/main/resources/" + ENVIRONMENT_FILE);
-		assertEquals(this.env.toString(), env.toString());
-
-		// collection environment: load environment from file path
-		col.loadEnvironment("src/main/resources/" + ENVIRONMENT_FILE);
-	}
-
-	@Test
-	public void testLoadResourceEnvironment() throws Exception {
-		// environment resource: loading by stream should match initialized environment
-		Environment env = Environment.load(TestCoverage.class.getClassLoader().getResourceAsStream(ENVIRONMENT_FILE));
-		assertEquals(this.env.toString(), env.toString());
-	}
-
-	@Test
-	public void testLoadStringEnvironment() throws Exception {
-		Environment env;
-
-		// environment: name present → parsed name
-		env = Environment.load(JsonParser.parseString("{\"name\":\"TEST_NAME\"}").getAsJsonObject());
-		assertEquals(env.getName(), "TEST_NAME");
-
-		// environment: name absent → default name
-		env = Environment.load(JsonParser.parseString("{}").getAsJsonObject());
-		assertEquals(env.getName(), "Unknown Environment");
-		env.print();
-
-		// environment values: key absent and enabled=false → skipped
-		env = Environment.load(JsonParser.parseString("{\"values\":[{\"value\":\"v\",\"enabled\":false}]}").getAsJsonObject());
-		assertEquals(env.getParams().size(), 0);
-
-		// environment values: key absent and enabled=true → skipped
-		env = Environment.load(JsonParser.parseString("{\"values\":[{\"value\":\"v\",\"enabled\":true}]}").getAsJsonObject());
-		assertEquals(env.getParams().size(), 0);
-
-		// environment values: value absent → stored as ""
-		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\"}]}").getAsJsonObject());
-		assertEquals(env.get("apikey"), "");
-		env.print();
-	}
-
-	@Test(expectedExceptions = IllegalArgumentException.class,
-			expectedExceptionsMessageRegExp = "Environment key not found: 'NEW_KEY'")
-	public void testEnvSetThrowWhenKeyNotFound() {
-		Environment source = new Environment("Test Env");
-
-		// environment builder: add creates new key
-		Environment target1 = source.builder().add("NEW_KEY", TEST_USERNAME).end();
-
-		// environment builder: set existing key updates value
-		Environment target2 = target1.builder().set("NEW_KEY", ENV_TOKEN_KEY).end();
-
-		// environment builder: resolve adds values from map
-		Environment target3 = target2.builder().resolve(Map.of("OLD_KEY", TEST_USERNAME)).end();
-
-		assertEquals(target1.toString(), "  NEW_KEY                             = " + TEST_USERNAME + "\n");
-		assertEquals(target2.toString(), "  NEW_KEY                             = " + ENV_TOKEN_KEY + "\n");
-		assertEquals(target3.toString(), "  NEW_KEY                             = " + ENV_TOKEN_KEY + "\n"
-				+ "  OLD_KEY                             = " + TEST_USERNAME + "\n");
-
-		// environment builder: source remains unchanged
-		assertEquals(source.getParams().size(), 0);
-
-		// environment builder: set missing key → throws
-		source.builder().set("NEW_KEY", TEST_USERNAME);
 	}
 
 	// -------------------------------------------------------------------------
@@ -819,5 +679,174 @@ public class TestCoverage {
 
 		// body builder: set missing key on original body → throws
 		template.getBody().builder().set("NEW_KEY", TEST_USERNAME);
+	}
+	
+	// -------------------------------------------------------------------------
+	// Test Request
+	// -------------------------------------------------------------------------
+
+	@Test
+	public void testRequest() throws Exception {
+		Request request = folder.getRequest(ALL_PRODUCTS);
+
+		// request: real collection request should preserve name
+		assertEquals(request.getName(), ALL_PRODUCTS);
+	}
+
+	@Test
+	public void testRequestFromString() throws Exception {
+		Collection col;
+		Request req;
+
+		// request: url string → parsed directly
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"url\": \"http://github.com\"}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getUrl(), "http://github.com");
+		assertEquals(req.getMethod(), "GET");
+		assertEquals(req.getFolderName(), PRODUCT_FOLDER);
+		assertEquals(req.getQueries().isEmpty(), true);
+		req.print();
+
+		// request: description string → parsed directly
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"description\": \"TODO\"}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getDescription(), "TODO");
+		req.print();
+
+		// request: description null → empty string
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"description\": null}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getDescription(), "");
+
+		// request: description object without content → empty string
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"description\": {}}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getDescription(), "");
+
+		// request: description object with content → content string
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"description\": {\"content\": \"TODO\"}}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getDescription(), "TODO");
+
+		// request: url null → empty string
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"url\": null}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getUrl(), "");
+
+		// request: url object without raw → empty string
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"url\": {}}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getUrl(), "");
+
+		// request auth: v2.1 basic array value absent → stored as ""
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"auth\":{\"type\":\"basic\",\"basic\":[{\"key\":\"" + TEST_USERNAME + "\"}]}}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getAuth().toString(), "[basic] {" + TEST_USERNAME + "=}");
+		req.print();
+
+		// request header: value absent → stored as ""
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"header\":[{\"key\":\"" + TEST_USERNAME + "\"}]}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getHeader().toString(), "  " + TEST_USERNAME + "                           = \n");
+		req.print();
+
+		// request body: empty body object → none body
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"body\":{}}"
+						+ "}]}]}")
+				.getAsJsonObject());
+		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+		assertEquals(req.getBody().toString(), "[none]");
+		req.print();
+
+		// request apply: empty request should apply without throwing
+		req.apply(mock(RequestSpecification.class));
+
+		// request apply: header + raw/json body → Rest Assured spec receives parsable request
+		col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"request\":{\"header\":[{\"key\":\"X-Test\",\"value\":\"v\"}],"
+						+ "\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\","
+						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}")
+				.getAsJsonObject());
+		assertEquals(col.getRequests().size(), 1);
+		req = col.getRequest("Unnamed");
+		assertEquals(req.getHeader().getParams().size(), 1);
+		req.apply(mock(RequestSpecification.class));
+	}
+
+	@Test(expectedExceptions = IllegalArgumentException.class,
+			expectedExceptionsMessageRegExp = "Body key not found: 'NEW_KEY'")
+	public void testRequestThrowWhenKeyNotFound() throws Exception {
+		Collection col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
+						+ "{\"request\":{\"body\":{}}"
+						+ "}]}]}")
+				.getAsJsonObject());
+
+		Request template = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
+
+		// request builder: body add creates new key on cloned request
+		Request req = template.builder().body().add("NEW_KEY", TEST_USERNAME).end().build();
+		assertEquals(req.getBody().toString(), "[none] {\"NEW_KEY\":\"" + TEST_USERNAME + "\"}");
+
+		// request builder: body set missing key → throws
+		template.builder().body().set("NEW_KEY", TEST_USERNAME);
+	}
+	
+	private Request request(String method) throws IOException {
+		String url = env.get("base_url");
+	    return Collection.load(JsonParser.parseString(
+	            "{\"item\":[{\"request\":{\"method\":\"" + method + "\",\"url\":\"" + url + "\"}}]}"
+	    ).getAsJsonObject()).getRequest("Unnamed");
+	}
+	
+	@Test
+	public void testExecuteAllHttpMethods() throws IOException {
+		RequestSpecification spec = mock(RequestSpecification.class);
+	    request("GET").execute(spec);
+	    request("POST").execute(spec);
+	    request("PUT").execute(spec);
+	    request("PATCH").execute(spec);
+	    request("DELETE").execute(spec);
+	    request("HEAD").execute(spec);
+	    request("OPTIONS").execute(spec);
+	    assertThrows(IllegalArgumentException.class, () -> request("TODO").execute(spec));
 	}
 }

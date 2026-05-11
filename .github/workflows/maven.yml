@@ -8,15 +8,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
+    permissions:
+      contents: read
 
-      - uses: actions/setup-java@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 11
+          cache: maven
 
-      - name: Build + Test + Coverage
+      - name: Build + Coverage
         run: mvn clean verify -Dtest=TestCoverage
 
       - name: Upload coverage to Codecov

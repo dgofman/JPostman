@@ -4,23 +4,55 @@
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>io.jpostman</groupId>
+	<groupId>io.github.dgofman</groupId>
 	<artifactId>jpostman</artifactId>
 	<version>1.0.0</version>
 	<packaging>jar</packaging>
 
 	<name>JPostman</name>
+	<description>
+		A lightweight Java utility for loading exported Postman collections and environments, 
+        then executing the parsed requests with Rest Assured while avoiding duplicated headers, 
+        body payloads, auth configuration, and query parameters in Java tests.
+	</description>
+	<url>https://github.com/dgofman/JPostman</url>
+
+	<licenses>
+		<license>
+			<name>MIT License</name>
+			<url>https://opensource.org/license/mit/</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
+
+	<developers>
+		<developer>
+			<id>dgofman</id>
+			<name>David Gofman</name>
+			<url>https://github.com/dgofman</url>
+		</developer>
+	</developers>
+
+	<scm>
+		<connection>scm:git:https://github.com/dgofman/JPostman.git</connection>
+		<developerConnection>scm:git:ssh://git@github.com/dgofman/JPostman.git</developerConnection>
+		<url>https://github.com/dgofman/JPostman</url>
+		<tag>HEAD</tag>
+	</scm>
 
 	<properties>
 		<java.version>11</java.version>
-		<maven.compiler.source>${java.version}</maven.compiler.source>
-		<maven.compiler.target>${java.version}</maven.compiler.target>
 		<maven.compiler.release>${java.version}</maven.compiler.release>
+
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
 		<maven.compiler.plugin.version>3.13.0</maven.compiler.plugin.version>
 		<maven.surefire.plugin.version>3.5.2</maven.surefire.plugin.version>
+		<maven.source.plugin.version>3.4.0</maven.source.plugin.version>
+		<maven.javadoc.plugin.version>3.12.0</maven.javadoc.plugin.version>
+		<maven.gpg.plugin.version>3.2.8</maven.gpg.plugin.version>
+		<central.publishing.plugin.version>0.10.0</central.publishing.plugin.version>
 
 		<gson.version>2.13.2</gson.version>
 		<slf4j.version>2.0.17</slf4j.version>
@@ -30,6 +62,10 @@
 		<rest-assured.version>5.5.0</rest-assured.version>
 		<hamcrest.version>2.2</hamcrest.version>
 		<jacoco.version>0.8.14</jacoco.version>
+
+		<!-- Local builds skip signing/publishing. GitHub release workflow enables both. -->
+		<gpg.skip>true</gpg.skip>
+		<central.skipPublishing>true</central.skipPublishing>
 	</properties>
 
 	<dependencies>
@@ -79,13 +115,18 @@
 			<version>${logback.version}</version>
 			<scope>test</scope>
 		</dependency>
+
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-core</artifactId>
+			<version>5.18.0</version>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
-		<sourceDirectory>src/main/java/</sourceDirectory>
-		<testSourceDirectory>src/test/java</testSourceDirectory>
-
 		<plugins>
+			<!-- Compile source with Java 11 bytecode compatibility. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
@@ -95,6 +136,7 @@
 				</configuration>
 			</plugin>
 
+			<!-- Run TestNG tests. Use -Dtest=TestCoverage to run only coverage-focused tests. -->
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
@@ -106,6 +148,7 @@
 				</configuration>
 			</plugin>
 
+			<!-- Generate JaCoCo coverage reports for Codecov. -->
 			<plugin>
 				<groupId>org.jacoco</groupId>
 				<artifactId>jacoco-maven-plugin</artifactId>
@@ -116,14 +159,95 @@
 							<goal>prepare-agent</goal>
 						</goals>
 					</execution>
+
 					<execution>
 						<id>report</id>
 						<phase>verify</phase>
 						<goals>
 							<goal>report</goal>
 						</goals>
+						<configuration>
+							<formats>
+								<format>HTML</format>
+								<format>XML</format>
+							</formats>
+						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+
+			<!-- Required by Maven Central: attach source jar. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-source-plugin</artifactId>
+				<version>${maven.source.plugin.version}</version>
+				<executions>
+					<execution>
+						<id>attach-sources</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>jar-no-fork</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Required by Maven Central: attach javadoc jar. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-javadoc-plugin</artifactId>
+				<version>${maven.javadoc.plugin.version}</version>
+				<configuration>
+					<source>${java.version}</source>
+					<doclint>none</doclint>
+					<quiet>true</quiet>
+				</configuration>
+				<executions>
+					<execution>
+						<id>attach-javadocs</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Required by Maven Central: sign artifacts during release builds. -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-gpg-plugin</artifactId>
+				<version>${maven.gpg.plugin.version}</version>
+				<executions>
+					<execution>
+						<id>sign-artifacts</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>sign</goal>
+						</goals>
+						<configuration>
+							<skip>${gpg.skip}</skip>
+							<gpgArguments>
+								<arg>--pinentry-mode</arg>
+								<arg>loopback</arg>
+							</gpgArguments>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Publish to Sonatype Central Portal. Release workflow enables publishing. -->
+			<plugin>
+				<groupId>org.sonatype.central</groupId>
+				<artifactId>central-publishing-maven-plugin</artifactId>
+				<version>${central.publishing.plugin.version}</version>
+				<extensions>true</extensions>
+				<configuration>
+					<publishingServerId>central</publishingServerId>
+					<autoPublish>true</autoPublish>
+					<waitUntil>published</waitUntil>
+					<skipPublishing>${central.skipPublishing}</skipPublishing>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>

@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import io.restassured.http.ContentType;
+import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
 import java.util.Map;
@@ -374,6 +375,52 @@ public class Request {
 			spec.body(body.getRaw());
 		}
 	    return spec;
+	}
+	
+	/**
+	 * Applies the request configuration and executes the HTTP request
+	 * using the configured request method.
+	 *
+	 * <p>This method internally delegates to {@link #apply(RequestSpecification)}
+	 * to populate headers, body, content type, cookies, queries, and other
+	 * request settings before executing the final HTTP call.</p>
+	 *
+	 * <p>Supported HTTP methods:</p>
+	 * <ul>
+	 *   <li>GET</li>
+	 *   <li>POST</li>
+	 *   <li>PUT</li>
+	 *   <li>PATCH</li>
+	 *   <li>DELETE</li>
+	 *   <li>HEAD</li>
+	 *   <li>OPTIONS</li>
+	 * </ul>
+	 *
+	 * @param spec the Rest Assured request specification to configure
+	 * @return the executed Rest Assured response
+	 * @throws IllegalArgumentException when the HTTP method is unsupported
+	 */
+	public Response execute(RequestSpecification spec) {
+	    RequestSpecification applied = apply(spec);
+
+	    switch (method.toUpperCase()) {
+	        case "GET":
+	            return applied.get(url);
+	        case "POST":
+	            return applied.post(url);
+	        case "PUT":
+	            return applied.put(url);
+	        case "PATCH":
+	            return applied.patch(url);
+	        case "DELETE":
+	            return applied.delete(url);
+	        case "HEAD":
+	            return applied.head(url);
+	        case "OPTIONS":
+	            return applied.options(url);
+	        default:
+	            throw new IllegalArgumentException("Unsupported HTTP method: " + method);
+	    }
 	}
 
 	// -------------------------------------------------------------------------
