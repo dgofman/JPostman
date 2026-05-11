@@ -1,0 +1,165 @@
+package io.jpostman;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import org.jspecify.annotations.NonNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Represents the authentication configuration of a Postman request or
+ * collection.
+ *
+ * <p>
+ * Supported auth types (Postman v2.1):
+ * <ul>
+ * <li>{@code noauth} — no authentication</li>
+ * <li>{@code bearer} — Bearer token; key {@code "token"}</li>
+ * <li>{@code basic} — Basic auth; keys {@code "username"},
+ * {@code "password"}</li>
+ * <li>{@code apikey} — API key; keys {@code "key"}, {@code "value"},
+ * {@code "in"}</li>
+ * <li>{@code oauth2} — OAuth 2.0; keys vary (e.g. {@code "accessToken"})</li>
+ * <li>{@code oauth1} — OAuth 1.0; keys vary</li>
+ * <li>{@code digest} — Digest auth; keys {@code "username"},
+ * {@code "password"}</li>
+ * <li>{@code hawk} — Hawk auth</li>
+ * <li>{@code awsv4} — AWS Signature v4</li>
+ * <li>{@code ntlm} — NTLM auth</li>
+ * </ul>
+ *
+ * Use {@link #from(JsonObject)} to parse from a raw request or collection
+ * object.
+ */
+public class Auth {
+
+	private static final Logger log = LoggerFactory.getLogger(Auth.class);
+
+	private final String type;
+	private final Map<String, String> params;
+
+	Auth(String type, Map<String, String> params) {
+		this.type = type;
+		this.params = Collections.unmodifiableMap(params);
+	}
+
+	// -------------------------------------------------------------------------
+	// Factory
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Parse the {@code auth} object from a Postman v2.1 {@code request} or
+	 * collection root JSON object.
+	 *
+	 * @param obj the JSON object that may contain an {@code auth} field
+	 * @return populated {@link Auth}; type is {@code "noauth"} when absent
+	 */
+	public static @NonNull Auth from(JsonObject obj) {
+		if (!obj.has("auth") || obj.get("auth").isJsonNull()) {
+			return new Auth("noauth", new LinkedHashMap<>());
+		}
+		JsonObject authObj = obj.getAsJsonObject("auth");
+		String type = authObj.has("type") ? authObj.get("type").getAsString() : "noauth";
+
+		Map<String, String> params = new LinkedHashMap<>();
+
+		// Postman v2.1 stores auth params as an array: [{key, value, type}, ...]
+		// The array key matches the auth type (e.g. "bearer", "basic", "apikey").
+		if (authObj.has(type) && authObj.get(type).isJsonArray()) {
+			for (JsonElement el : authObj.getAsJsonArray(type)) {
+				if (!el.isJsonObject())
+					continue;
+				JsonObject entry = el.getAsJsonObject();
+				String key = entry.has("key") ? entry.get("key").getAsString() : "";
+				String value = entry.has("value") ? entry.get("value").getAsString() : "";
+				if (!key.isEmpty())
+					params.put(key, value);
+			}
+		}
+
+		// Fallback: Postman v2.0 stores params as a flat object directly under the type
+		// key.
+		if (params.isEmpty() && authObj.has(type) && authObj.get(type).isJsonObject()) {
+			JsonObject flat = authObj.getAsJsonObject(type);
+			for (Map.Entry<String, JsonElement> entry : flat.entrySet()) {
+				params.put(entry.getKey(), entry.getValue().isJsonPrimitive() ? entry.getValue().getAsString() : "");
+			}
+		}
+
+		return new Auth(type, params);
+	}
+
+	// -------------------------------------------------------------------------
+	// Accessors
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Auth type — e.g. {@code "bearer"}, {@code "basic"}, {@code "apikey"},
+	 * {@code "oauth2"}, {@code "noauth"}.
+	 */
+	public String getType() {
+		return type;
+	}
+
+	public Map<String, String> getParams() {
+		return params;
+	}
+
+	/**
+	 * Convenience — returns a single param value by key, or empty string if absent.
+	 */
+	public String get(String key) {
+		return params.get(key);
+	}
+
+	public boolean isNoAuth() {
+		return "noauth".equals(type);
+	}
+
+	/**
+	 * Returns a {@link ParamBuilder} pre-populated from this auth's params.
+	 */
+	public ParamBuilder<Auth> builder() {
+		String authType = this.type;
+		Map<String, String> params = new LinkedHashMap<>(this.params);
+		ParamBuilder.Builder<Auth> buildFn = () -> new Auth(authType, new LinkedHashMap<>(params));
+		return new ParamBuilder<Auth>(
+				// ADD
+				(String key, Object value) -> params.put(key, (String) value),
+				// SET (Updates an existing key; throws if the key does not exist)
+				(String key, Object value) -> {
+					if (!params.containsKey(key))
+						throw new IllegalArgumentException("Auth key not found: '" + key + "'");
+					params.put(key, (String) value);
+				},
+				// RESOLVE
+				vars -> {
+					for (String k : new ArrayList<>(params.keySet())) {
+						params.put(k, ParamBuilder.substituteVars(params.get(k), vars));
+					}
+				},
+				// BUILD
+				buildFn);
+	}
+
+	public void print() {
+		if (params.isEmpty()) {
+			log.trace("  (noauth)");
+		} else {
+			log.trace(this.toString());
+		}
+	}
+
+	@Override
+	public String toString() {
+		if (isNoAuth())
+			return "[noauth]";
+		return "[" + type + "] " + params;
+	}
+}

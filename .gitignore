@@ -1,0 +1,6 @@
+.classpath
+.project
+target/
+test-output/
+.settings/
+src/main/resources/hello_world.png
