@@ -25,14 +25,22 @@ public class Query {
 
     private final Map<String, String> params = new LinkedHashMap<>();
 
+    /** @return true when no enabled query parameters are present. */
     public boolean isEmpty() {
         return params.isEmpty();
     }
 
+    /** @return query parameters in insertion order. */
     public Map<String, String> getParams() {
         return params;
     }
 
+    /**
+     * Looks up a query parameter by key.
+     *
+     * @param key query parameter name
+     * @return query value, or {@code null} when absent
+     */
     public String get(String key) {
         return params.get(key);
     }
@@ -98,6 +106,16 @@ public class Query {
                 buildFn);
     }
 
+    /**
+     * Rebuilds the URL query string from the parsed {@link Query} object.
+     * Existing raw query text is removed because Postman's {@code url.query[]}
+     * array is treated as the source of truth. URL fragments are preserved and
+     * remain after the rebuilt query string.
+     *
+     * @param sourceUrl raw URL before query rebuild
+     * @param query parsed query parameters
+     * @return URL with rebuilt query string
+     */
     public static String applyQueriesToUrl(String sourceUrl, Query query) {
 		if (sourceUrl.isBlank() || query.isEmpty()) {
 			return sourceUrl;
@@ -119,14 +137,20 @@ public class Query {
 		String joined = query.getParams().entrySet().stream()
 				.map(e -> e.getKey() + "=" + e.getValue())
 				.collect(java.util.stream.Collectors.joining("&"));
-		return queryIndex == -1 ? base + fragment : base + "?" + joined + fragment;
+		return base + "?" + joined + fragment;
 	}
     
+    /** Logs query parameters at TRACE level. */
     public void print() {
+    	log.trace(toDebugString());
+	}
+
+	/** Returns verbose diagnostic representation including details. */
+	public String toDebugString() {
         if (params.isEmpty()) {
-            log.trace("  (no query parameters)");
+            return "  (no query parameters)";
         } else {
-            log.trace(this.toString());
+        	return this.toString();
         }
     }
 

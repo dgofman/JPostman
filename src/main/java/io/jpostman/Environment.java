@@ -17,6 +17,11 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+/**
+ * Represents a Postman environment and its key/value variables.
+ * Variables are later used to resolve {@code {{name}}} placeholders in
+ * requests, headers, queries, bodies, and auth fields.
+ */
 public class Environment {
 
 	private static final Logger log = LoggerFactory.getLogger(Environment.class);
@@ -28,20 +33,28 @@ public class Environment {
 		this.name = name;
 	}
 
+	/** @return environment name. */
 	public String getName() {
 		return name;
 	}
 
+	/** @return environment variables in insertion order. */
 	public Map<String, String> getParams() {
 		return params;
 	}
 
+	/**
+	 * Looks up a variable by key.
+	 *
+	 * @param key variable name
+	 * @return variable value, or {@code null} when absent
+	 */
 	public String get(String key) {
 		return params.get(key);
 	}
 
 	/**
-	 * Returns a {@link Builder} pre-populated from this environment's variables.
+	 * Returns a {@link ParamBuilder} pre-populated from this environment's variables.
 	 */
 	public ParamBuilder<Environment> builder() {
 		String envName = this.name;
@@ -79,10 +92,9 @@ public class Environment {
 	}
 
 	/**
-	 * Load a Postman environment from an already-open {@link Reader}. The caller
-	 * retains ownership and is responsible for closing the reader.
+	 * Load a Postman environment from an input stream. The stream is closed by this method.
 	 *
-	 * @param reader an open reader positioned at the start of the JSON
+	 * @param is input stream positioned at the start of the environment JSON
 	 * @return populated {@link Environment} instance
 	 */
 	public static Environment load(InputStream is) throws IOException {
@@ -91,17 +103,33 @@ public class Environment {
 		}
 	}
 
+	/**
+	 * Load an environment from an already parsed JSON object. Disabled entries and
+	 * entries without a key are skipped. Missing values are stored as empty strings.
+	 *
+	 * @param root environment root JSON object
+	 * @return populated environment
+	 */
 	public static Environment load(JsonObject root) throws IOException {
-		String envName = root.has("name") ? root.get("name").getAsString() : "Unknown Environment";
+		String envName = root.has("name") && 
+				!root.get("name").isJsonNull()
+				? root.get("name").getAsString()
+				: "Unknown Environment";
 		Environment env = new Environment(envName);
 
-		if (root.has("values")) {
+		if (root.has("values") && root.get("values").isJsonArray()) {
 			for (JsonElement el : root.getAsJsonArray("values")) {
+				if (!el.isJsonObject()) {
+					continue;
+				}
 				JsonObject var = el.getAsJsonObject();
 				boolean enabled = !var.has("enabled") || var.get("enabled").getAsBoolean();
-				if (enabled && var.has("key")) {
+				if (enabled && var.has("key") && !var.get("key").isJsonNull()) {
 					String key = var.get("key").getAsString();
-					String value = var.has("value") ? var.get("value").getAsString() : "";
+					String value = var.has("value") && 
+							!var.get("value").isJsonNull()
+							? var.get("value").getAsString()
+							: "";
 					env.params.put(key, value);
 				}
 			}
@@ -109,15 +137,23 @@ public class Environment {
 		return env;
 	}
 
+	/** Logs the environment name and variables. */
 	public void print() {
-		log.info(String.format("=== Environment: %s (%d variable%s) ===", name, params.size(), params.size() == 1 ? "" : "s"));
-		if (params.isEmpty()) {
-			log.trace("  (no variables)");
-		} else {
-			log.trace(this.toString());
-		}
+		log.trace(toDebugString());
 	}
 
+	/** Returns verbose diagnostic representation including details. */
+	public String toDebugString() {
+		StringBuilder sb = new StringBuilder();
+	    sb.append(String.format("=== Environment: %s (%d variable%s) ===", name, params.size(), params.size() == 1 ? "" : "s"));
+		if (params.isEmpty()) {
+			sb.append("\n  (no variables)");
+		} else {
+	        sb.append(toString());
+		}
+		return sb.toString();
+	}
+	
 	@Override
 	public String toString() {
 		return params.entrySet().stream().map(e -> String.format("  %-35s = %s\n", e.getKey(), e.getValue()))

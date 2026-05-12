@@ -50,10 +50,10 @@ public class Collection {
 	}
 
 	/**
-	 * Load a collection from an already-open {@link Reader}. The caller retains
-	 * ownership and is responsible for closing the reader.
+	 * Load a collection from an input stream. The stream is closed by this method.
 	 *
-	 * @param reader an open reader positioned at the start of the JSON
+	 * @param is input stream positioned at the start of the collection JSON
+	 * @return populated collection
 	 */
 	public static Collection load(InputStream is) throws IOException {
 		try (Reader reader = new InputStreamReader(is)) {
@@ -61,14 +61,23 @@ public class Collection {
 		}
 	}
 	
+	/**
+	 * Load a collection from an already parsed JSON object.
+	 *
+	 * @param root collection root JSON object
+	 * @return populated collection
+	 */
 	public static Collection load(JsonObject root) throws IOException {
 		Collection col = new Collection(root);
-		if (root.has("info")) {
+		col.name = "Unnamed Collection";
+		if (root.has("info") && root.get("info").isJsonObject()) {
 			JsonObject info = root.getAsJsonObject("info");
-			col.name = info.has("name") ? info.get("name").getAsString() : "Unnamed Collection";
+			col.name = info.has("name") && !info.get("name").isJsonNull()
+					? info.get("name").getAsString()
+					: "Unnamed Collection";
 		}
 
-		if (root.has("item")) {
+		if (root.has("item") && root.get("item").isJsonArray()) {
 			parseItems(root.getAsJsonArray("item"), col, null);
 		}
 		return col;
@@ -84,9 +93,10 @@ public class Collection {
 	}
 
 	/**
-	 * Load and attach a Postman environment file to this collection.
+	 * Load and attach a Postman environment from an input stream. The stream is
+	 * closed by {@link Environment#load(InputStream)}.
 	 *
-	 * @param reader an open reader positioned at the start of the JSON
+	 * @param is environment JSON input stream
 	 */
 	public void loadEnvironment(InputStream is) throws IOException {
 		this.environment = Environment.load(is);
@@ -125,18 +135,27 @@ public class Collection {
 	// Accessors
 	// -------------------------------------------------------------------------
 
+	/** @return original collection root JSON. */
 	public JsonObject getRoot() {
 		return root;
 	}
 
+	/** @return collection name. */
 	public String getName() {
 		return name;
 	}
 
+	/** @return parsed folders. */
 	public List<Folder> getFolders() {
 		return folders;
 	}
 
+	/**
+	 * Looks up a folder by name, ignoring case.
+	 *
+	 * @param folderName folder name
+	 * @return matching folder, or {@code null}
+	 */
 	public Folder getFolder(String folderName) {
 		for (Folder folder : folders) {
 			if (folder.getName().equalsIgnoreCase(folderName)) {
@@ -146,14 +165,22 @@ public class Collection {
 		return null;
 	}
 
+	/** @return environment attached with {@link #loadEnvironment}, or {@code null}. */
 	public Environment getEnvironment() {
 		return environment;
 	}
 
+	/** @return root-level requests, excluding requests inside folders. */
 	public List<Request> getRequests() {
 		return rootRequests;
 	}
 
+	/**
+	 * Looks up a root-level request by name, ignoring case.
+	 *
+	 * @param requestName request name
+	 * @return matching request, or {@code null}
+	 */
 	public Request getRequest(String requestName) {
 		for (Request request : rootRequests) {
 			if (request.getName().equalsIgnoreCase(requestName)) {
@@ -169,13 +196,20 @@ public class Collection {
 
 	/** Prints every folder and its request count. */
 	public void print() {
-		log.info(String.format("=== Collection: %s (%d request%s) ===", name, rootRequests.size(), rootRequests.size() == 1 ? "" : "s"));
+		log.trace(toDebugString());
+	}
+
+	/** Returns verbose diagnostic representation including details. */
+	public String toDebugString() {
+		StringBuilder sb = new StringBuilder();
+	    sb.append(String.format("=== Collection: %s (%d request%s) ===", name, rootRequests.size(), rootRequests.size() == 1 ? "" : "s"));
 		if (folders.isEmpty()) {
-			log.trace("  (no folders)");
+			sb.append("\n  (no folders)");
 		} else {
-			log.trace(String.format("  (%d folder%s)", folders.size(), folders.size() == 1 ? "" : "s"));
-			log.trace(this.toString());
+			sb.append(String.format("\n  (%d folder%s)", folders.size(), folders.size() == 1 ? "" : "s"));
+	        sb.append(toString());
 		}
+		return sb.toString();
 	}
 
 	@Override

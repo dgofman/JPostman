@@ -93,6 +93,30 @@ public class TestCoverage {
 		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\"}]}").getAsJsonObject());
 		assertEquals(env.get("apikey"), "");
 		env.print();
+		
+		// environment values: values exists but is not array → skipped
+		env = Environment.load(JsonParser.parseString("{\"values\":\"not-array\"}").getAsJsonObject());
+		assertEquals(env.getParams().size(), 0);
+
+		// environment values: non-object value entry → skipped
+		env = Environment.load(JsonParser.parseString("{\"values\":[\"not-object\"]}").getAsJsonObject());
+		assertEquals(env.getParams().size(), 0);
+
+		// environment values: key is null → skipped
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":null,\"value\":\"v\"}]}").getAsJsonObject());
+		assertEquals(env.getParams().size(), 0);
+
+		// environment values: enabled missing → treated as enabled
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"k\",\"value\":\"v\"}]}").getAsJsonObject());
+		assertEquals(env.get("k"), "v");
+		
+		// environment values: value is null → stored as ""
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"k\",\"value\":null}]}").getAsJsonObject());
+		assertEquals(env.get("k"), "");
+
+		// environment: name is null → default name
+		env = Environment.load(JsonParser.parseString("{\"name\":null}").getAsJsonObject());
+		assertEquals(env.getName(), "Unknown Environment");
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class,
@@ -286,6 +310,19 @@ public class TestCoverage {
 				.getAsJsonObject());
 		assertEquals(auth.get("TEST_USERNAME"), TEST_USERNAME);
 		assertEquals(auth.get("nested"), "");
+		
+		// auth exists but is not object → noauth
+		auth = Auth.from(JsonParser.parseString("{\"auth\":\"invalid\"}").getAsJsonObject());
+		assertEquals(auth.getType(), "noauth");
+		assertEquals(auth.getParams().size(), 0);
+		
+		// auth type is null → defaults to noauth
+		auth = Auth.from(JsonParser.parseString("{\"auth\":{\"type\":null}}").getAsJsonObject());
+		assertEquals(auth.getType(), "noauth");
+		
+		// auth array entry: key is null and value is null → skipped
+		auth = Auth.from(JsonParser.parseString("{\"auth\":{\"type\":\"bearer\",\"bearer\":[{\"key\":null,\"value\":null}]}}").getAsJsonObject());
+		assertEquals(auth.getParams().size(), 0);
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class,
@@ -424,7 +461,7 @@ public class TestCoverage {
 		assertEquals(req.getQuery().get("text"), "JPostman");
 		assertEquals(req.getUrl(), env.get("base_url") + "/image?text=JPostman#preview");
 
-		// url object: raw URL has fragment but no query → URL remains fragment-only
+		// raw URL has no query but url.query[] exists (unlikely with standard Postman export)
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image#preview\",\"query\":[{\"key\":\"text\",\"value\":\"{{image_text}}\"}]}}}"
@@ -437,7 +474,7 @@ public class TestCoverage {
 
 		assertEquals(template.getQuery().get("text"), "{{image_text}}");
 		assertEquals(req.getQuery().get("text"), "JPostman");
-		assertEquals(req.getUrl(), env.get("base_url") + "/image#preview");
+		assertEquals(req.getUrl(), env.get("base_url") + "/image?text=JPostman#preview");
 	}
 
 	@Test
@@ -595,11 +632,27 @@ public class TestCoverage {
 		assertEquals(body.getMode(), "raw");
 		assertEquals(body.getRaw(), "");
 		assertEquals(body.getParsed(), null);
-		assertEquals(body.isEmpty(), false);
+		assertEquals(body.isEmpty(), true);
+		
+		// getString: array value → default returned
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":[1,2,3]}}")
+		        .getAsJsonObject());
+		assertEquals(body.getRaw(), "");
+		
+		// raw mode: options is null
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":null}}")
+		        .getAsJsonObject());
+		assertEquals(body.getLanguage(), "");
 
 		// raw mode: options absent/empty → language=""
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":{}}}")
 				.getAsJsonObject());
+		assertEquals(body.getLanguage(), "");
+		assertEquals(body.toString(), "[raw] hello");
+		
+		// raw mode: options.raw exists but is not object → language defaults to ""
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":{\"raw\":\"json\"}}}")
+		        .getAsJsonObject());
 		assertEquals(body.getLanguage(), "");
 		assertEquals(body.toString(), "[raw] hello");
 
@@ -608,48 +661,92 @@ public class TestCoverage {
 				.getAsJsonObject());
 		assertEquals(body.getLanguage(), "");
 
-		// graphql mode: parsed null → builder falls back to empty JsonObject
+		// graphql mode: graphql field absent → raw graphql payload is empty; builder creates an empty object
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"graphql\"}}").getAsJsonObject());
 		assertEquals(body.builder().end().getRaw(), "{}");
 		assertEquals(body.toString(), "[graphql]");
+		
+		// graphql mode: graphql field is null → raw graphql payload is empty; builder creates an empty object
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"graphql\",\"graphql\":null}}").getAsJsonObject());
+		assertEquals(body.builder().end().getRaw(), "{}");
+		assertEquals(body.toString(), "[graphql]");
 
-		// graphql mode: graphql query present but unsupported for parsed body builder → empty JsonObject
+		// graphql mode: graphql query object is stored as raw text; builder starts from an empty object
 		body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"graphql\",\"graphql\":{\"query\":\"{ hero }\"}}}")
 				.getAsJsonObject());
 		assertEquals(body.builder().end().getRaw(), "{}");
 		assertEquals(body.toString(), "[graphql]");
 
-		// raw/json: valid JSON array → parsed non-null but builder falls back to empty JsonObject
+		// raw/json: valid JSON array → parsed as JsonArray and builder preserves array body
 		body = Body.from(JsonParser.parseString(
-				"{\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
-				.getAsJsonObject());
+			    "{\"body\":{\"mode\":\"raw\",\"raw\":\"[\\\"{{base_url}}\\\",\\\"{{username}}\\\",\\\"{{password}}\\\"]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+			    .getAsJsonObject());
 		assertNotNull(body.getParsed());
 		assertEquals(body.getParsed().isJsonArray(), true);
-		assertEquals(body.builder().end().getRaw(), "{}");
+		assertEquals(body.builder().end().getRaw(), "[\"{{base_url}}\",\"{{username}}\",\"{{password}}\"]");
+		assertEquals(ParamBuilder.substituteVars(body.builder().end().getRaw(), env.getParams()), "[\"https://dummyjson.com\",\"emilys\",\"emilyspass\"]");
 
 		// raw/json: invalid JSON raw string → parse failure ignored, mode remains raw
 		body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"raw\",\"raw\":\"[{null}]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
 				.getAsJsonObject());
 		assertEquals(body.getMode(), "raw");
+		
+		// formdata mode: explicit null payload → mode preserved, but body is empty
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"formdata\",\"formdata\": null}}")
+				.getAsJsonObject());
+		assertEquals(body.getMode(), "formdata");
 
-		// formdata mode: string formdata payload → mode preserved
+		// formdata mode: invalid JSON-looking string → preserved as a string primitive
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"formdata\",\"formdata\":\"[{null}]\"}}")
 				.getAsJsonObject());
 		assertEquals(body.getMode(), "formdata");
 
-		// formdata mode: file key entry → raw remains empty; toString includes formdata payload
+		// formdata mode: JSON array encoded as a string → parsed and serialized as array
 		body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"formdata\",\"formdata\":\"[{\\\"key\\\":\\\"file\\\"}]\"}}")
 				.getAsJsonObject());
 		assertEquals(body.getMode(), "formdata");
-		assertEquals(body.getRaw(), "");
+		assertEquals(body.getRaw(), "[{\"key\":\"file\"}]");
 		assertEquals(body.toString(), "[formdata] [{\"key\":\"file\"}]");
 
-		// urlencoded mode: mode preserved
+		// urlencoded mode: missing payload → mode preserved with empty body
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"urlencoded\"}}").getAsJsonObject());
 		assertEquals(body.getMode(), "urlencoded");
+		
+		// urlencoded mode: explicit null payload → mode preserved with empty body
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"urlencoded\", \"urlencoded\": null}}").getAsJsonObject());
+		assertEquals(body.getMode(), "urlencoded");
+		
+		// urlencoded mode: Postman-style array payload → serialized as JSON array
+		body = Body.from(JsonParser.parseString(
+		    "{\"body\":{\"mode\":\"urlencoded\",\"urlencoded\":[{\"key\":\"username\",\"value\":\"{{username}}\"}]}}")
+		    .getAsJsonObject());
+		assertEquals(body.getMode(), "urlencoded");
+		assertEquals(body.getRaw(), "[{\"key\":\"username\",\"value\":\"{{username}}\"}]");
+		assertEquals(ParamBuilder.substituteVars(body.getRaw(), env.getParams()), "[{\"key\":\"username\",\"value\":\"emilys\"}]");
+		
+		// formdata mode: object payload → serialized as JSON object
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"formdata\",\"formdata\":{\"username\":\"{{username}}\"}}}")
+			    .getAsJsonObject());
+		assertEquals(body.getMode(), "formdata");
+		assertEquals(body.getRaw(), "{\"username\":\"{{username}}\"}");
+		assertEquals(ParamBuilder.substituteVars(body.getRaw(), env.getParams()), "{\"username\":\"emilys\"}");
+		
+
+		// formdata mode: primitive boolean payload → preserved as primitive fallback
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"formdata\",\"formdata\":true}}")
+		        .getAsJsonObject());
+		assertEquals(body.getParsed().isJsonPrimitive(), true);
+		assertEquals(body.getRaw(), "true");
+		
+		// formdata mode: blank string payload → treated as empty body so GET requests do not send ""
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"formdata\",\"formdata\":\"\"}}")
+		        .getAsJsonObject());
+		assertEquals(body.getRaw(), "");
+		assertEquals(body.isEmpty(), true);
+
 
 		// raw/json resolve: number value → not substituted
 		body = Body.from(JsonParser.parseString(
@@ -658,12 +755,36 @@ public class TestCoverage {
 		resolved = body.builder().resolve(Map.of("count", "99")).end();
 		assertEquals(resolved.getRaw(), "{\"count\":42}");
 
-		// raw/json resolve: nested object value → not substituted
+		// raw/json resolve: non-string nested value → not substituted
 		body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"meta\\\":{\\\"v\\\":1}}\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
 				.getAsJsonObject());
 		resolved = body.builder().resolve(Map.of("v", "replaced")).end();
 		assertEquals(resolved.getRaw(), "{\"meta\":{\"v\":1}}");
+		
+		// raw/json resolve: array string values → recursively substituted
+		body = Body.from(JsonParser.parseString(
+		    "{\"body\":{\"mode\":\"raw\",\"raw\":\"[\\\"{{base_url}}\\\",\\\"{{username}}\\\"]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+		    .getAsJsonObject());
+
+		resolved = body.builder().resolve(env.getParams()).end();
+		assertEquals(resolved.getRaw(), "[\"https://dummyjson.com\",\"emilys\"]");
+		
+		// body field is primitive instead of object → defaults to NONE body
+		body = Body.from(JsonParser.parseString("{\"body\":\"invalid\"}").getAsJsonObject());
+		assertEquals(body.getMode(), "none");
+		assertEquals(body.isEmpty(), true);
+		
+		// raw/json resolve: null array item → preserved
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"[null,\\\"{{username}}\\\"]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+		    .getAsJsonObject());
+		resolved = body.builder().resolve(env.getParams()).end();
+		assertEquals(resolved.getRaw(), "[null,\"emilys\"]");
+		
+		// null request object → NONE body
+		body = Body.from(null);
+		assertEquals(body.getMode(), "none");
+		assertEquals(body.isEmpty(), true);
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class,
@@ -671,7 +792,7 @@ public class TestCoverage {
 	public void testBodySetThrowWhenKeyNotFound() {
 		Request template = col.getRequest(LOGIN_GET_TOKEN);
 
-		// body builder: add creates new key on cloned body
+		// body builder: add creates new key on cloned JSON object body
 		Body body = template.getBody().builder().add("NEW_KEY", TEST_USERNAME).end();
 		assertEquals(body.toString(),
 				"[raw/json] {\"username\":\"{{username}}\",\"password\":\"{{password}}\",\"NEW_KEY\":\""
@@ -679,6 +800,14 @@ public class TestCoverage {
 
 		// body builder: set missing key on original body → throws
 		template.getBody().builder().set("NEW_KEY", TEST_USERNAME);
+	}
+	
+	@Test(expectedExceptions = IllegalArgumentException.class,
+			expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body")
+	public void testBodyAddRequiresObjectBody() {
+		Body body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+				 .getAsJsonObject());
+		body.builder().add("x", 1).end();
 	}
 	
 	// -------------------------------------------------------------------------
@@ -809,6 +938,42 @@ public class TestCoverage {
 		req = col.getRequest("Unnamed");
 		assertEquals(req.getHeader().getParams().size(), 1);
 		req.apply(mock(RequestSpecification.class));
+		
+		// request url: url field is array → unsupported URL shape returns ""
+		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"url\":[\"http://github.com\"]}}]}")
+		        .getAsJsonObject());
+		req = col.getRequest("Unnamed");
+		assertEquals(req.getUrl(), "");
+		
+		// request url object: raw is null → empty URL
+		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"url\":{\"raw\":null}}}]}")
+		        .getAsJsonObject());
+		req = col.getRequest("Unnamed");
+		assertEquals(req.getUrl(), "");
+		
+		// request url object: raw is object → empty URL
+		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"url\":{\"raw\":{\"value\":\"http://github.com\"}}}}]}")
+		        .getAsJsonObject());
+		req = col.getRequest("Unnamed");
+		assertEquals(req.getUrl(), "");
+		
+		// request: description array → empty string
+		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"description\":[\"TODO\"]}}]}")
+		        .getAsJsonObject());
+		req = col.getRequest("Unnamed");
+		assertEquals(req.getDescription(), "");
+		
+		// request: description object with content null → empty string
+		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"description\":{\"content\":null}}}]}")
+		        .getAsJsonObject());
+		req = col.getRequest("Unnamed");
+		assertEquals(req.getDescription(), "");
+		
+		// request: description object with content object → empty string
+		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"description\":{\"content\":{\"text\":\"TODO\"}}}}]}")
+		        .getAsJsonObject());
+		req = col.getRequest("Unnamed");
+		assertEquals(req.getDescription(), "");
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class,

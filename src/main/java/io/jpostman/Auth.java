@@ -64,8 +64,13 @@ public class Auth {
 		if (!obj.has("auth") || obj.get("auth").isJsonNull()) {
 			return new Auth("noauth", new LinkedHashMap<>());
 		}
+		if (!obj.get("auth").isJsonObject()) {
+			return new Auth("noauth", new LinkedHashMap<>());
+		}
 		JsonObject authObj = obj.getAsJsonObject("auth");
-		String type = authObj.has("type") ? authObj.get("type").getAsString() : "noauth";
+		String type = authObj.has("type") && !authObj.get("type").isJsonNull()
+				? authObj.get("type").getAsString()
+				: "noauth";
 
 		Map<String, String> params = new LinkedHashMap<>();
 
@@ -76,8 +81,8 @@ public class Auth {
 				if (!el.isJsonObject())
 					continue;
 				JsonObject entry = el.getAsJsonObject();
-				String key = entry.has("key") ? entry.get("key").getAsString() : "";
-				String value = entry.has("value") ? entry.get("value").getAsString() : "";
+				String key = entry.has("key") && !entry.get("key").isJsonNull() ? entry.get("key").getAsString() : "";
+				String value = entry.has("value") && !entry.get("value").isJsonNull() ? entry.get("value").getAsString() : "";
 				if (!key.isEmpty())
 					params.put(key, value);
 			}
@@ -107,6 +112,7 @@ public class Auth {
 		return type;
 	}
 
+	/** @return immutable auth parameter map. */
 	public Map<String, String> getParams() {
 		return params;
 	}
@@ -118,6 +124,7 @@ public class Auth {
 		return params.get(key);
 	}
 
+	/** @return true when the auth type is {@code noauth}. */
 	public boolean isNoAuth() {
 		return "noauth".equals(type);
 	}
@@ -148,12 +155,17 @@ public class Auth {
 				buildFn);
 	}
 
+	/** Logs auth details at TRACE level. */
 	public void print() {
-		if (params.isEmpty()) {
-			log.trace("  (noauth)");
-		} else {
-			log.trace(this.toString());
-		}
+		log.trace(toDebugString());
+	}
+	
+	/** Returns verbose diagnostic representation including details. */
+	public String toDebugString() {
+	    if (params.isEmpty()) {
+	        return "  (noauth)";
+	    }
+	    return toString();
 	}
 
 	@Override

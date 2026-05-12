@@ -13,8 +13,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * A single HTTP header key/value pair from a Postman collection request. Use
- * {@link #from(JsonObject)} to build a list from a raw request object.
+ * Represents the HTTP headers of a Postman request.
+ *
+ * <p>Headers are stored as an ordered key/value map. Disabled Postman headers
+ * are ignored during parsing.</p>
  */
 public class Header {
 
@@ -23,14 +25,22 @@ public class Header {
 	private final Map<String, String> params = new LinkedHashMap<>();
 
 
+	/** @return true when no enabled headers are present. */
 	public boolean isEmpty() {
 		return params.isEmpty();
 	}
 	
+	/** @return mutable header map in insertion order. */
 	public Map<String, String> getParams() {
 		return params;
 	}
 
+	/**
+	 * Returns a header by name.
+	 *
+	 * @param key header name
+	 * @return header value, or {@code null} when absent
+	 */
 	public String get(String key) {
 		return params.get(key);
 	}
@@ -68,7 +78,7 @@ public class Header {
 	}
 
 	/**
-	 * Returns a {@link Builder} pre-populated from the given header list.
+	 * Returns a {@link ParamBuilder} pre-populated from this header map.
 	 */
 	public ParamBuilder<Header> builder() {
 		Map<String, String> params = new LinkedHashMap<>(this.params);
@@ -95,11 +105,17 @@ public class Header {
 				buildFn);
 	}
 
+	/** Logs headers at TRACE level. */
 	public void print() {
+		log.trace(toDebugString());
+	}
+
+	/** Returns verbose diagnostic representation including details. */
+	public String toDebugString() {
 		if (params.isEmpty()) {
-			log.trace("  (no headers)");
+			return "  (no headers)";
 		} else {
-			log.trace(this.toString());
+			return this.toString();
 		}
 	}
 

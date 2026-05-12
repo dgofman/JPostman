@@ -75,28 +75,34 @@ public class Request {
 
 	/** Handles both string and object URL forms used in Postman v2.0 and v2.1. */
 	private static String extractUrl(JsonObject reqObj) {
-		if (!reqObj.has("url"))
+		if (!reqObj.has("url") || reqObj.get("url").isJsonNull()) {
 			return "";
+		}
 		JsonElement urlEl = reqObj.get("url");
-		if (urlEl.isJsonPrimitive())
+		if (urlEl.isJsonPrimitive()) {
 			return urlEl.getAsString();
+		}
 		if (urlEl.isJsonObject()) {
 			JsonObject urlObj = urlEl.getAsJsonObject();
-			return urlObj.has("raw") ? urlObj.get("raw").getAsString() : "";
+			JsonElement raw = urlObj.get("raw");
+			return raw != null && !raw.isJsonNull() && raw.isJsonPrimitive() ? raw.getAsString() : "";
 		}
 		return "";
 	}
 
 	/** Description may be a plain string or a {@code {content, type}} object. */
 	private static String extractDescription(JsonObject reqObj) {
-		if (!reqObj.has("description"))
+		if (!reqObj.has("description") || reqObj.get("description").isJsonNull()) {
 			return "";
+		}
 		JsonElement el = reqObj.get("description");
-		if (el.isJsonPrimitive())
+		if (el.isJsonPrimitive()) {
 			return el.getAsString();
+		}
 		if (el.isJsonObject()) {
 			JsonObject obj = el.getAsJsonObject();
-			return obj.has("content") ? obj.get("content").getAsString() : "";
+			JsonElement content = obj.get("content");
+			return content != null && !content.isJsonNull() && content.isJsonPrimitive() ? content.getAsString() : "";
 		}
 		return "";
 	}
@@ -337,6 +343,9 @@ public class Request {
 			return build();
 		}
 
+		/**
+		 * Nested builder step used for headers, queries, body, and auth.
+		 */
 		public class ParamStep {
 			private final ParamBuilder<?> delegate;
 
@@ -344,16 +353,19 @@ public class Request {
 				this.delegate = delegate;
 			}
 
+			/** Adds or replaces a parameter without requiring it to exist first. */
 			public ParamStep add(String key, String value) {
 				delegate.add(key, value);
 				return this;
 			}
 
+			/** Updates an existing parameter and throws when the key is missing. */
 			public ParamStep set(String key, String value) {
 				delegate.set(key, value);
 				return this;
 			}
 
+			/** Returns to the parent request builder. */
 			public RequestBuilder end() {
 				return RequestBuilder.this;
 			}
@@ -382,7 +394,7 @@ public class Request {
 	 * using the configured request method.
 	 *
 	 * <p>This method internally delegates to {@link #apply(RequestSpecification)}
-	 * to populate headers, body, content type, cookies, queries, and other
+	 * to populate headers, body, content type, and other
 	 * request settings before executing the final HTTP call.</p>
 	 *
 	 * <p>Supported HTTP methods:</p>
@@ -431,16 +443,23 @@ public class Request {
 	 * Detailed multi-line output including description, auth, headers, and body.
 	 */
 	public void print() {
-		log.debug(toString());
-		if (!description.isEmpty())
-			log.trace("Description: " + description);
+		log.trace(toDebugString());
+	}
+
+	/** Returns verbose diagnostic representation including details. */
+	public String toDebugString() {
+		StringBuilder sb = new StringBuilder();
+	    sb.append(toString());
+	    if (!description.isEmpty())
+	    	sb.append("\nDescription: " + description);		
 		if (!auth.isNoAuth())
-			log.trace("Auth: " + auth);
+			sb.append("\nAuth: " + auth);
 		if (!header.isEmpty())
-			log.trace("Headers:\n" + header);
+			sb.append("\nHeaders:\n" + header);
 		if (!query.isEmpty())
-			log.trace("Queries:\n" + query);
-		log.trace("Body: " + body);
+			sb.append("\nQueries:\n" + query);
+		sb.append("\nBody: " + body);
+		return sb.toString();
 	}
 
 	@Override

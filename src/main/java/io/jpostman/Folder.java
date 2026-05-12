@@ -7,6 +7,9 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Represents a Postman collection folder and its direct request children.
+ */
 public class Folder {
 
 	private static final Logger log = LoggerFactory.getLogger(Folder.class);
@@ -14,22 +17,36 @@ public class Folder {
 	private final String name;
 	private final List<Request> requests = new ArrayList<>();
 
+	/**
+	 * Creates a folder container.
+	 *
+	 * @param name folder name from the collection
+	 */
 	public Folder(String name) {
 		this.name = name;
 	}
 
+	/** @return folder name. */
 	public String getName() {
 		return name;
 	}
 
+	/** @return requests directly contained in this folder. */
 	public List<Request> getRequests() {
 		return requests;
 	}
 
+	/** Adds a request to this folder during collection parsing. */
 	public void addRequest(Request request) {
 		requests.add(request);
 	}
 
+	/**
+	 * Looks up a request by name, ignoring case.
+	 *
+	 * @param requestName request name
+	 * @return matching request, or {@code null}
+	 */
 	public Request getRequest(String requestName) {
 		for (Request request : requests) {
 			if (request.getName().equalsIgnoreCase(requestName)) {
@@ -44,12 +61,19 @@ public class Folder {
 	 * collection root are listed under "(root)".
 	 */
 	public void print() {
-		log.info(String.format("=== Folder: %s (%d request%s) ===", name, requests.size(), requests.size() == 1 ? "" : "s"));
+		log.trace(toDebugString());
+	}
+
+	/** Returns verbose diagnostic representation including details. */
+	public String toDebugString() {
+		StringBuilder sb = new StringBuilder();
+	    sb.append(String.format("=== Folder: %s (%d request%s) ===", name, requests.size(), requests.size() == 1 ? "" : "s"));
 		if (requests.isEmpty()) {
-			log.trace("  (no requests)");
+			sb.append("\n  (no requests)");
 		} else {
-			log.trace(this.toString());
+	        sb.append(toString());
 		}
+		return sb.toString();
 	}
 
 	@Override

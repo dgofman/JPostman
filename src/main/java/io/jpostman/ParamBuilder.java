@@ -77,11 +77,21 @@ public class ParamBuilder<T> {
 		return onBuild.build();
 	}
 
+	/**
+	 * Replaces all {@code {{key}}} tokens in {@code value} with entries from
+	 * {@code vars}. Unknown tokens are left unchanged.
+	 *
+	 * @param value source text; may be {@code null}
+	 * @param vars variable map; may be {@code null}
+	 * @return substituted text, or {@code null} when {@code value} is null
+	 */
 	public static String substituteVars(String value, Map<String, String> vars) {
-		if (value == null)
-			return null;
-		for (Map.Entry<String, String> e : vars.entrySet())
+		if (value == null || vars == null || vars.isEmpty()) {
+			return value;
+		}
+		for (Map.Entry<String, String> e : vars.entrySet()) {
 			value = value.replace("{{" + e.getKey() + "}}", e.getValue());
+		}
 		return value;
 	}
 }
