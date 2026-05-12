@@ -86,7 +86,7 @@ public class ParamBuilder<T> {
 	 * @return substituted text, or {@code null} when {@code value} is null
 	 */
 	public static String substituteVars(String value, Map<String, String> vars) {
-		if (value == null || vars == null || vars.isEmpty()) {
+		if (value == null || vars == null) {
 			return value;
 		}
 		for (Map.Entry<String, String> e : vars.entrySet()) {

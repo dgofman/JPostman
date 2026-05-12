@@ -170,6 +170,9 @@ public class TestCoverage {
 
 		// param helper: null input should not throw
 		ParamBuilder.substituteVars(null, null);
+		
+		// substituteVars: null vars → original value returned
+		assertEquals(ParamBuilder.substituteVars("{{username}}", null), "{{username}}");
 	}
 
 	@Test
@@ -199,6 +202,19 @@ public class TestCoverage {
 		col = Collection.load(JsonParser.parseString("{\"item\": [{\"request\":{}}]}").getAsJsonObject());
 		assertEquals(col.getRequests().size(), 1);
 		col.print();
+		
+		// collection: info exists but is null → default name
+		col = Collection.load(JsonParser.parseString("{\"info\":null}").getAsJsonObject());
+		assertEquals(col.getName(), "Unnamed Collection");
+		
+		// collection: info.name is null → default name
+		col = Collection.load(JsonParser.parseString("{\"info\":{\"name\":null}}").getAsJsonObject());
+		assertEquals(col.getName(), "Unnamed Collection");
+		
+		// collection: item exists but is not array → no folders/requests
+		col = Collection.load(JsonParser.parseString("{\"item\":\"invalid\"}").getAsJsonObject());
+		assertEquals(col.getFolders().size(), 0);
+		assertEquals(col.getRequests().size(), 0);
 	}
 
 	// -------------------------------------------------------------------------
