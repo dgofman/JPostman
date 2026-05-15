@@ -2,7 +2,8 @@ name: Maven
 
 on:
   push:
-  pull_request:
+    tags:
+      - "v*.*.*"
 
 jobs:
   build:

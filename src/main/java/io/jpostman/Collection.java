@@ -154,15 +154,19 @@ public class Collection {
 	 * Looks up a folder by name, ignoring case.
 	 *
 	 * @param folderName folder name
-	 * @return matching folder, or {@code null}
+	 * @return matching folder
+	 * @throws IllegalArgumentException if folder is not found
 	 */
 	public Folder getFolder(String folderName) {
-		for (Folder folder : folders) {
-			if (folder.getName().equalsIgnoreCase(folderName)) {
-				return folder;
-			}
-		}
-		return null;
+	    for (Folder folder : folders) {
+	        if (folder.getName().equalsIgnoreCase(folderName)) {
+	            return folder;
+	        }
+	    }
+
+	    throw new IllegalArgumentException(
+	        "Folder not found: " + folderName
+	    );
 	}
 
 	/** @return environment attached with {@link #loadEnvironment}, or {@code null}. */
@@ -179,15 +183,19 @@ public class Collection {
 	 * Looks up a root-level request by name, ignoring case.
 	 *
 	 * @param requestName request name
-	 * @return matching request, or {@code null}
+	 * @return matching request
+	 * @throws IllegalArgumentException if request is not found
 	 */
 	public Request getRequest(String requestName) {
-		for (Request request : rootRequests) {
-			if (request.getName().equalsIgnoreCase(requestName)) {
-				return request;
-			}
-		}
-		return null;
+	    for (Request request : rootRequests) {
+	        if (request.getName().equalsIgnoreCase(requestName)) {
+	            return request;
+	        }
+	    }
+
+	    throw new IllegalArgumentException(
+	        "Request not found: " + requestName
+	    );
 	}
 
 	// -------------------------------------------------------------------------
@@ -203,11 +211,14 @@ public class Collection {
 	public String toDebugString() {
 		StringBuilder sb = new StringBuilder();
 	    sb.append(String.format("=== Collection: %s (%d request%s) ===", name, rootRequests.size(), rootRequests.size() == 1 ? "" : "s"));
+		if (!rootRequests.isEmpty()) {
+	        sb.append(rootRequests.stream().map(e -> String.format("\n    %s", e)).collect(Collectors.joining())); 
+		}
 		if (folders.isEmpty()) {
 			sb.append("\n  (no folders)");
 		} else {
 			sb.append(String.format("\n  (%d folder%s)", folders.size(), folders.size() == 1 ? "" : "s"));
-	        sb.append(toString());
+	        sb.append('\n' + toString());
 		}
 		return sb.toString();
 	}

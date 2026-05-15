@@ -12,76 +12,97 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.jpostman.ParamBuilder.ParamInfo;
+
 /**
  * Represents the HTTP headers of a Postman request.
  *
- * <p>Headers are stored as an ordered key/value map. Disabled Postman headers
- * are ignored during parsing.</p>
+ * <p>Headers are stored in insertion order. Disabled Postman headers are
+ * preserved internally, but only enabled headers are exposed through
+ * {@link #getParams()}, rendered in {@link #toString()}, and applied to
+ * requests.</p>
  */
 public class Header {
 
 	private static final Logger log = LoggerFactory.getLogger(Header.class);
-	
-	private final Map<String, String> params = new LinkedHashMap<>();
 
+	private final Map<String, ParamInfo> params = new LinkedHashMap<>();
 
 	/** @return true when no enabled headers are present. */
 	public boolean isEmpty() {
-		return params.isEmpty();
+		return getParams().isEmpty();
+	}
+
+	/** @return enabled headers in insertion order. */
+	public Map<String, String> getParams() {
+		Map<String, String> enabled = new LinkedHashMap<>();
+		params.forEach((key, info) -> {
+			if (info.enabled) {
+				enabled.put(key, info.value);
+			}
+		});
+		return enabled;
 	}
 	
-	/** @return mutable header map in insertion order. */
-	public Map<String, String> getParams() {
-		return params;
+	/**
+	 * Looks up parameter metadata by key.
+	 *
+	 * @param key parameter name
+	 * @return matching {@link ParamInfo}, or {@code null} when absent
+	 */
+	public ParamInfo getParam(String key) {
+		return params.get(key);
 	}
 
 	/**
-	 * Returns a header by name.
+	 * Returns an enabled header by name.
 	 *
 	 * @param key header name
-	 * @return header value, or {@code null} when absent
+	 * @return header value, or {@code null} when absent or disabled
 	 */
 	public String get(String key) {
-		return params.get(key);
+		ParamInfo info = getParam(key);
+		return info != null && info.enabled ? info.value : null;
 	}
-	
-	
+
 	// -------------------------------------------------------------------------
 	// Factory
 	// -------------------------------------------------------------------------
 
 	/**
 	 * Parse the {@code header} array from a Postman v2.1 {@code request} object.
+	 * Disabled entries are preserved internally but excluded from public output.
 	 *
 	 * @param reqObj the {@code request} JSON object
-	 * @return immutable list of {@link Header} entries; empty if none present
+	 * @return parsed {@link Header}; empty when none are present
 	 */
 	public static @NonNull Header from(JsonObject reqObj) {
 		Header header = new Header();
-		if (!reqObj.has("header"))
+		if (!reqObj.has("header")) {
 			return header;
+		}
 		JsonElement el = reqObj.get("header");
-		if (!el.isJsonArray())
+		if (!el.isJsonArray()) {
 			return header;
+		}
 		for (JsonElement item : el.getAsJsonArray()) {
-			if (!item.isJsonObject())
+			if (!item.isJsonObject()) {
 				continue;
+			}
 			JsonObject h = item.getAsJsonObject();
-			String key = h.has("key") ? h.get("key").getAsString() : "";
-			String value = h.has("value") ? h.get("value").getAsString() : "";
-			boolean disabled = h.has("disabled") && h.get("disabled").getAsBoolean();
-			if (!key.isBlank() && !disabled) {
-				header.params.put(key, value);
+			String key = h.has("key") && !h.get("key").isJsonNull() ? h.get("key").getAsString() : "";
+			String value = h.has("value") && !h.get("value").isJsonNull() ? h.get("value").getAsString() : "";
+			boolean enabled = !(h.has("disabled") && h.get("disabled").getAsBoolean());
+			if (!key.isBlank()) {
+				header.params.put(key, new ParamInfo(value, enabled));
 			}
 		}
 		return header;
 	}
 
-	/**
-	 * Returns a {@link ParamBuilder} pre-populated from this header map.
-	 */
+	/** Returns a {@link ParamBuilder} pre-populated from this header map. */
 	public ParamBuilder<Header> builder() {
-		Map<String, String> params = new LinkedHashMap<>(this.params);
+		Map<String, ParamInfo> params = new LinkedHashMap<>(this.params);
 		ParamBuilder.Builder<Header> buildFn = () -> {
 			Header header = new Header();
 			params.forEach(header.params::put);
@@ -89,17 +110,24 @@ public class Header {
 		};
 		return new ParamBuilder<Header>(
 				// ADD
-				(String key, Object value) -> params.put(key, (String) value),
-				// SET (Updates an existing key; throws if the key does not exist)
+				(String key, Object value) -> params.put(key, new ParamInfo(String.valueOf(value), true)),
+				// SET
 				(String key, Object value) -> {
-					if (!params.containsKey(key))
+					ParamInfo info = params.get(key);
+					if (info == null) {
 						throw new IllegalArgumentException("Header key not found: '" + key + "'");
-					params.put(key, (String) value);
+					}
+					params.put(key, new ParamInfo(String.valueOf(value), info.enabled));
 				},
 				// RESOLVE
 				vars -> {
-					for (String k : new ArrayList<>(params.keySet()))
-						params.put(k, ParamBuilder.substituteVars(params.get(k), vars));
+					for (String k : new ArrayList<>(params.keySet())) {
+						ParamInfo info = params.get(k);
+						if (info.enabled) {
+							params.put(k, new ParamInfo(
+									ParamBuilder.substituteVars(info.value, vars), true));
+						}
+					}
 				},
 				// BUILD
 				buildFn);
@@ -110,19 +138,18 @@ public class Header {
 		log.trace(toDebugString());
 	}
 
-	/** Returns verbose diagnostic representation including details. */
+	/** Returns verbose diagnostic representation including enabled headers. */
 	public String toDebugString() {
-		if (params.isEmpty()) {
+		if (isEmpty()) {
 			return "  (no headers)";
-		} else {
-			return this.toString();
 		}
+		return toString();
 	}
 
 	@Override
 	public String toString() {
-		return params.entrySet().stream().map(e -> String.format("  %-35s = %s\n", e.getKey(), e.getValue()))
+		return getParams().entrySet().stream()
+				.map(e -> String.format("  %-35s = %s\n", e.getKey(), e.getValue()))
 				.collect(Collectors.joining());
-
 	}
 }

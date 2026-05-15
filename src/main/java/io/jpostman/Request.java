@@ -24,23 +24,21 @@ public class Request {
 
 	private final String name;
 	private final String method;
-	private final String url;
 	private final String folderName;
 	private final String description;
+	private final Url url;
 	private final Header header;
-	private final Query query;
 	private final Body body;
 	private final Auth auth;
 
-	private Request(String name, String method, String url, String folderName, String description, 
-			Header header, Query query, Body body, Auth auth) {
+	private Request(String name, String method, String folderName, String description, 
+			Url url, Header header, Body body, Auth auth) {
 		this.name = name;
 		this.method = method;
 		this.url = url;
 		this.folderName = folderName;
 		this.description = description;
 		this.header = header;
-		this.query = query;
 		this.body = body;
 		this.auth = auth;
 	}
@@ -58,36 +56,13 @@ public class Request {
 	 */
 	public static Request from(String name, String folderName, JsonObject reqObj) {
 		String method = reqObj.has("method") ? reqObj.get("method").getAsString() : "GET";
-		String url = extractUrl(reqObj);
 		String desc = extractDescription(reqObj);
-
+		Url url = Url.from(reqObj);
 		Header header = Header.from(reqObj);
-		Query query = Query.from(reqObj);
 		Body body = Body.from(reqObj);
 		Auth auth = Auth.from(reqObj);
 
-		return new Request(name, method, url, folderName, desc, header, query, body, auth);
-	}
-
-	// -------------------------------------------------------------------------
-	// Extraction helpers
-	// -------------------------------------------------------------------------
-
-	/** Handles both string and object URL forms used in Postman v2.0 and v2.1. */
-	private static String extractUrl(JsonObject reqObj) {
-		if (!reqObj.has("url") || reqObj.get("url").isJsonNull()) {
-			return "";
-		}
-		JsonElement urlEl = reqObj.get("url");
-		if (urlEl.isJsonPrimitive()) {
-			return urlEl.getAsString();
-		}
-		if (urlEl.isJsonObject()) {
-			JsonObject urlObj = urlEl.getAsJsonObject();
-			JsonElement raw = urlObj.get("raw");
-			return raw != null && !raw.isJsonNull() && raw.isJsonPrimitive() ? raw.getAsString() : "";
-		}
-		return "";
+		return new Request(name, method, folderName, desc,  url, header, body, auth);
 	}
 
 	/** Description may be a plain string or a {@code {content, type}} object. */
@@ -119,10 +94,6 @@ public class Request {
 		return method;
 	}
 
-	public String getUrl() {
-		return url;
-	}
-
 	public String getFolderName() {
 		return folderName;
 	}
@@ -130,26 +101,28 @@ public class Request {
 	public String getDescription() {
 		return description;
 	}
+	
+	public String toUrl() {
+		return url.toString();
+	}
 
+	public Url getUrl() {
+		return url;
+	}
+	
 	public Header getHeader() {
 		return header;
-	}
-
-	public Query getQuery() {
-		return query;
-	}
-
-	public Query getQueries() {
-		return query;
-	}
-
-	public Body getBody() {
-		return body;
 	}
 
 	public Auth getAuth() {
 		return auth;
 	}
+	
+	public Body getBody() {
+		return body;
+	}
+	
+	
 
 	/**
 	 * Returns a {@link RequestBuilder} pre-populated from this request. Override
@@ -176,26 +149,52 @@ public class Request {
 	 */
 	public static class RequestBuilder {
 
-		private String url;
 		private final String name;
 		private final String method;
 		private final String folderName;
 		private final String description;
+		private final ParamBuilder<Url> urlBuilder;
 		private final ParamBuilder<Header> headerBuilder;
-		private final ParamBuilder<Query> queryBuilder;
-		private final ParamBuilder<Body> bodyBuilder;
 		private final ParamBuilder<Auth> authBuilder;
+		private final ParamBuilder<Body> bodyBuilder;
 
 		private RequestBuilder(Request req) {
 			this.name = req.name;
 			this.method = req.method;
-			this.url = req.url;
 			this.folderName = req.folderName;
 			this.description = req.description;
-			this.bodyBuilder = req.body.builder();
-			this.authBuilder = req.auth.builder();
+			this.urlBuilder = req.url.builder();
 			this.headerBuilder = req.header.builder();
-			this.queryBuilder = req.query.builder();
+			this.authBuilder = req.auth.builder();
+			this.bodyBuilder = req.body.builder();
+		}
+		
+		/**
+		 * Returns the current request builder instance for URL customization.
+		 *
+		 * <pre>{@code
+		 * request.builder().url().build();
+		 * }</pre>
+		 */
+		public ParamStep url() {
+			return new ParamStep(urlBuilder);
+		}
+
+		/**
+		 * Overrides the request URL.
+		 *
+		 * <pre>{@code
+		 * request.builder()
+		 *     .url("http://{{base_url}}/{{version}}/users")
+		 *     .build(env);
+		 * }</pre>
+		 *
+		 * @param url request URL
+		 * @return current request builder
+		 */
+		public RequestBuilder url(Consumer<ParamStep> customizer) {
+			customizer.accept(url());
+			return this;
 		}
 
 		/**
@@ -261,37 +260,6 @@ public class Request {
 		}
 
 		/**
-		 * Configures queries using a lambda-style nested builder.
-		 *
-		 * <pre>{@code
-		 * request.builder()
-		 *     .queries()
-		 *         .set("test", "JPostman")
-		 *         .set("fontSize", "20").end()
-		 *     .build();
-		 * }</pre>
-		 */
-		public ParamStep queries() {
-			return new ParamStep(queryBuilder);
-		}
-
-		/**
-		 * Configures queries using a lambda-style nested builder.
-		 *
-		 * <pre>{@code
-		 * request.builder()
-		 *     .queries(c -> c
-		 *         .set("test", "JPostman")
-		 *         .set("fontSize", "20"))
-		 *     .build();
-		 * }</pre>
-		 */
-		public RequestBuilder queries(Consumer<ParamStep> customizer) {
-			customizer.accept(queries());
-			return this;
-		}
-
-		/**
 		 * Configures body using a lambda-style nested builder.
 		 *
 		 * <pre>{@code
@@ -324,9 +292,8 @@ public class Request {
 
 		/** Builds and returns the final immutable {@link Request}. */
 		public Request build() {
-			Query query = queryBuilder.end();
-			return new Request(name, method, Query.applyQueriesToUrl(url, query), folderName, description, 
-					headerBuilder.end(), query, bodyBuilder.end(), authBuilder.end());
+			return new Request(name, method, folderName, description, urlBuilder.end(),
+					headerBuilder.end(), bodyBuilder.end(), authBuilder.end());
 		}
 
 		/**
@@ -335,11 +302,10 @@ public class Request {
 		 */
 		public Request build(Environment env) {
 			Map<String, String> vars = env.getParams();
-			url = ParamBuilder.substituteVars(url, vars);
+			urlBuilder.resolve(vars);
 			headerBuilder.resolve(vars);
-			queryBuilder.resolve(vars);
-			bodyBuilder.resolve(vars);
 			authBuilder.resolve(vars);
+			bodyBuilder.resolve(vars);
 			return build();
 		}
 
@@ -414,7 +380,8 @@ public class Request {
 	 */
 	public Response execute(RequestSpecification spec) {
 	    RequestSpecification applied = apply(spec);
-
+	    String url = this.url.toString();
+	    
 	    switch (method.toUpperCase()) {
 	        case "GET":
 	            return applied.get(url);
@@ -456,8 +423,6 @@ public class Request {
 			sb.append("\nAuth: " + auth);
 		if (!header.isEmpty())
 			sb.append("\nHeaders:\n" + header);
-		if (!query.isEmpty())
-			sb.append("\nQueries:\n" + query);
 		sb.append("\nBody: " + body);
 		return sb.toString();
 	}

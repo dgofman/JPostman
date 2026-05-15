@@ -45,15 +45,19 @@ public class Folder {
 	 * Looks up a request by name, ignoring case.
 	 *
 	 * @param requestName request name
-	 * @return matching request, or {@code null}
+	 * @return matching request
+	 * @throws IllegalArgumentException if request is not found
 	 */
 	public Request getRequest(String requestName) {
-		for (Request request : requests) {
-			if (request.getName().equalsIgnoreCase(requestName)) {
-				return request;
-			}
-		}
-		return null;
+	    for (Request request : requests) {
+	        if (request.getName().equalsIgnoreCase(requestName)) {
+	            return request;
+	        }
+	    }
+
+	    throw new IllegalArgumentException(
+	        "Request not found: " + requestName
+	    );
 	}
 
 	/**
@@ -67,11 +71,13 @@ public class Folder {
 	/** Returns verbose diagnostic representation including details. */
 	public String toDebugString() {
 		StringBuilder sb = new StringBuilder();
-	    sb.append(String.format("=== Folder: %s (%d request%s) ===", name, requests.size(), requests.size() == 1 ? "" : "s"));
+	    sb.append(String.format("=== Folder: %s (%d request%s) ===", 
+	    		name, requests.size(), 
+	    		requests.size() == 1 ? "" : "s"));
 		if (requests.isEmpty()) {
 			sb.append("\n  (no requests)");
 		} else {
-	        sb.append(toString());
+	        sb.append('\n' + toString());
 		}
 		return sb.toString();
 	}

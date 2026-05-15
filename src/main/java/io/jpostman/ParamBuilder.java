@@ -6,9 +6,9 @@ import java.util.function.Consumer;
 
 /**
  * Generic fluent builder for Postman parameter maps. Wraps domain-specific
- * set/resolve/build logic via lambdas so that {@link Header}, {@link Body},
- * {@link Auth}, and {@link Environment} all share one builder class instead of
- * four.
+ * add/set/resolve/build logic via lambdas so that {@link Header}, {@link Body},
+ * {@link Auth}, {@link Url}, and {@link Environment} can share one builder
+ * class instead of duplicating the same fluent API.
  *
  * @param <T> the type produced by {@link #end()}
  */
@@ -19,38 +19,23 @@ public class ParamBuilder<T> {
 		T build();
 	}
 
-
-	/**
-	 * PUT (loose): adds or updates a key without validation
-	 */
+	/** Adds or updates a key without validation. */
 	private final BiConsumer<String, Object> onPut;
 
-	/**
-	 * SET (strict - recommended): updates an existing key; throws if the key does not exist
-	 */
+	/** Updates an existing key and lets the target object throw when missing. */
 	private final BiConsumer<String, Object> onSet;
-	
 
-	/**
-	 * RESOLVE: applies variable substitution or transformation to parameters
-	 */
+	/** Resolves variable placeholders using the supplied environment variables. */
 	private final Consumer<Map<String, String>> onResolve;
-	
 
-	/**
-	 * BUILD: constructs the final object from current state
-	 */
+	/** Builds the final target object from the builder state. */
 	private final Builder<T> onBuild;
 
 	ParamBuilder(BiConsumer<String, Object> onPut, BiConsumer<String, Object> onSet,
 			Consumer<Map<String, String>> onResolve, Builder<T> onBuild) {
-		// PUT: add or update key (no validation)
 		this.onPut = onPut;
-		// SET: update existing key only (throws if missing)
 		this.onSet = onSet;
-		// RESOLVE: apply variable substitution
 		this.onResolve = onResolve;
-		// BUILD: create final object
 		this.onBuild = onBuild;
 	}
 
@@ -60,7 +45,12 @@ public class ParamBuilder<T> {
 		return this;
 	}
 
-	/** @throws IllegalArgumentException if the key is not valid (strict mode) */
+	/**
+	 * Updates an existing key.
+	 *
+	 * @throws IllegalArgumentException if the target object requires the key to
+	 *                                  exist and the key is missing
+	 */
 	public ParamBuilder<T> set(String key, Object value) {
 		onSet.accept(key, value);
 		return this;
@@ -72,7 +62,7 @@ public class ParamBuilder<T> {
 		return this;
 	}
 
-	/** Produces the final immutable object. */
+	/** Produces the final object. */
 	public T end() {
 		return onBuild.build();
 	}
@@ -93,5 +83,57 @@ public class ParamBuilder<T> {
 			value = value.replace("{{" + e.getKey() + "}}", e.getValue());
 		}
 		return value;
+	}
+
+	/**
+	 * Stores one Postman parameter value together with its enabled/disabled state.
+	 *
+	 * <p>Postman can keep disabled headers, query parameters, and environment
+	 * variables in the exported JSON. Keeping this metadata lets the parser preserve
+	 * the original collection structure while the public API can still expose only
+	 * enabled values for execution and variable substitution.</p>
+	 */
+	static public class ParamInfo {
+
+		/** Raw parameter value. Disabled parameters keep their value here too. */
+		final String value;
+
+		/** Whether this parameter should participate in execution/resolution output. */
+		boolean enabled;
+
+		/**
+		 * Creates parameter metadata.
+		 *
+		 * @param value parameter value; converted to an empty string when {@code null}
+		 * @param enabled true when the parameter should be active
+		 */
+		ParamInfo(String value, boolean enabled) {
+			this.value = value;
+			this.enabled = enabled;
+		}
+		
+		/**
+		 * Returns whether this parameter is enabled.
+		 *
+		 * @return {@code true} when enabled
+		 */
+		public boolean isEnabled() {
+		    return enabled;
+		}
+
+		/**
+		 * Enables or disables this parameter.
+		 *
+		 * @param enabled {@code true} to enable the parameter;
+		 *                {@code false} to disable it
+		 */
+		public void setEnabled(boolean enabled) {
+		    this.enabled = enabled;
+		}
+		
+		@Override
+		public String toString() {
+			return String.format("value=%s, enabled=%b", value, enabled);
+		}
 	}
 }

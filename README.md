@@ -1,10 +1,14 @@
 # JPostman
 
-[![Build](https://github.com/dgofman/JPostman/actions/workflows/maven.yml/badge.svg)](https://github.com/dgofman/JPostman/actions/workflows/maven.yml)
 ![Java](https://img.shields.io/badge/Java-11%2B-orange)
+[![Build](https://github.com/dgofman/JPostman/actions/workflows/maven.yml/badge.svg)](https://github.com/dgofman/JPostman/actions/workflows/maven.yml)
 ![Maven](https://img.shields.io/badge/Maven-3.x-blue)
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.dgofman/jpostman)](https://central.sonatype.com/artifact/io.github.dgofman/jpostman)
+![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/dgofman/JPostman)
 ![Coverage](https://codecov.io/gh/dgofman/JPostman/branch/main/graph/badge.svg)
 ![License](https://img.shields.io/github/license/dgofman/JPostman)
+
+<a href="https://repo1.maven.org/maven2/io/github/dgofman/jpostman/"><img src="logo.png" width="100"></a>
 
 **JPostman** is a small Java helper library that lets you reuse exported **Postman collections** and **Postman environments** directly in Java tests.
 

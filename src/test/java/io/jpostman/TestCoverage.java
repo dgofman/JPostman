@@ -5,8 +5,10 @@ import static io.jpostman.Constants.COLLECTION_FILE;
 import static io.jpostman.Constants.ENVIRONMENT_FILE;
 import static io.jpostman.Constants.ENV_TOKEN_KEY;
 import static io.jpostman.Constants.GET_AUTH_USER;
+import static io.jpostman.Constants.GENERATE_IMAGE;
 import static io.jpostman.Constants.LOGIN_GET_TOKEN;
 import static io.jpostman.Constants.PRODUCT_FOLDER;
+import static io.jpostman.Constants.IMAGE_FOLDER;
 import static io.jpostman.Constants.TEST_USERNAME;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
@@ -30,20 +32,20 @@ import io.restassured.specification.RequestSpecification;
  */
 public class TestCoverage {
 
-	private Collection col;
+	private Collection col3;
 	private Environment env;
 	private Folder folder;
 
 	@BeforeClass
 	public void load() throws Exception {
-		col = Collection.load(TestCoverage.class.getClassLoader().getResourceAsStream(COLLECTION_FILE));
-		col.print();
+		col3 = Collection.load(TestCoverage.class.getClassLoader().getResourceAsStream(COLLECTION_FILE));
+		col3.print();
 
-		col.loadEnvironment(TestCoverage.class.getClassLoader().getResourceAsStream(ENVIRONMENT_FILE));
-		env = col.getEnvironment();
+		col3.loadEnvironment(TestCoverage.class.getClassLoader().getResourceAsStream(ENVIRONMENT_FILE));
+		env = col3.getEnvironment();
 		env.print();
 
-		folder = col.getFolder(PRODUCT_FOLDER);
+		folder = col3.getFolder(PRODUCT_FOLDER);
 		folder.print();
 	}
 	
@@ -58,7 +60,7 @@ public class TestCoverage {
 		assertEquals(this.env.toString(), env.toString());
 
 		// collection environment: load environment from file path
-		col.loadEnvironment("src/main/resources/" + ENVIRONMENT_FILE);
+		col3.loadEnvironment("src/main/resources/" + ENVIRONMENT_FILE);
 	}
 
 	@Test
@@ -80,6 +82,24 @@ public class TestCoverage {
 		env = Environment.load(JsonParser.parseString("{}").getAsJsonObject());
 		assertEquals(env.getName(), "Unknown Environment");
 		env.print();
+		
+		// environment values: enabled=true → initially active; disabling removes from active params view
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\", \"value\":\"v\",\"enabled\":true}]}").getAsJsonObject());
+		assertEquals(env.getParams().size(), 1);		
+		assertEquals(env.getParam("apikey").isEnabled(), true);
+		env.getParam("apikey").setEnabled(false);
+		assertEquals(env.getParams().size(), 0);
+		assertEquals(env.get("unknown"), null);
+		assertEquals(env.get("apikey"), null);
+		assertEquals(env.getParam("apikey").toString(), "value=v, enabled=false");
+		
+		
+		// environment values: enabled=false → initially inactive; enabling restores to active params view
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\", \"value\":\"v\",\"enabled\":false}]}").getAsJsonObject());
+		assertEquals(env.getParams().size(), 0);
+		assertEquals(env.getParam("apikey").isEnabled(), false);
+		env.getParam("apikey").setEnabled(true);
+		assertEquals(env.getParams().size(), 1);
 
 		// environment values: key absent and enabled=false → skipped
 		env = Environment.load(JsonParser.parseString("{\"values\":[{\"value\":\"v\",\"enabled\":false}]}").getAsJsonObject());
@@ -154,15 +174,15 @@ public class TestCoverage {
 		Collection col = Collection.load("src/main/resources/" + COLLECTION_FILE);
 
 		// collection file: same source loaded by path → same parsed output
-		assertEquals(this.col.toString(), col.toString());
-		assertEquals(this.col.getRoot(), col.getRoot());
-		assertEquals(this.col.getName(), col.getName());
-		assertEquals(this.col.getFolders().toString(), col.getFolders().toString());
-		assertEquals(this.col.getRequests().toString(), col.getRequests().toString());
+		assertEquals(this.col3.toString(), col.toString());
+		assertEquals(this.col3.getRoot(), col.getRoot());
+		assertEquals(this.col3.getName(), col.getName());
+		assertEquals(this.col3.getFolders().toString(), col.getFolders().toString());
+		assertEquals(this.col3.getRequests().toString(), col.getRequests().toString());
 
-		// collection lookup: unknown folder/request → null
-		assertEquals(col.getFolder("UNKNOWN"), null);
-		assertEquals(col.getRequest("UNKNOWN"), null);
+		// collection lookup: unknown folder/request → throws exception
+		assertThrows(IllegalArgumentException.class, () -> col.getFolder("UNKNOWN"));
+		assertThrows(IllegalArgumentException.class, () -> col.getRequest("UNKNOWN"));
 
 		// request summary: parsed request should match formatted output
 		assertEquals(col.getRequest(GET_AUTH_USER).toString(),
@@ -239,17 +259,24 @@ public class TestCoverage {
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":[{\"request\":{}}]}]}")
 				.getAsJsonObject());
-		folder = col.getFolder(PRODUCT_FOLDER);
-		assertEquals(folder.getRequests().size(), 1);
 
-		// folder lookup: unknown request → null
-		assertEquals(folder.getRequest("UNKOWN"), null);
+		Folder productFolder = col.getFolder(PRODUCT_FOLDER);
+		assertEquals(productFolder.getRequests().size(), 1);
+		assertThrows(IllegalArgumentException.class, () -> productFolder.getRequest("UNKNOWN"));
 
 		// folder request: unnamed empty request → default GET and empty URL
-		req = folder.getRequest("Unnamed");
+		req = productFolder.getRequest("Unnamed");
 		assertEquals(req.toString(), "[GET   ] Unnamed                                  -> ");
 		folder.print();
+		
+		col = Collection.load(JsonParser.parseString(
+		        "{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":[{\"name\":\"Users\",\"request\":{\"method\":\"GET\",\"url\":\"https://example.com/users\"}}]}]}")
+		        .getAsJsonObject());
+		folder = col.getFolder(PRODUCT_FOLDER);
+		assertEquals(folder.toDebugString(), "=== Folder: Product (1 request) ===\n"
+				+ "    [GET   ] Users                                    -> https://example.com/users\n");
 	}
+	
 
 	// -------------------------------------------------------------------------
 	// Test Auth
@@ -258,7 +285,7 @@ public class TestCoverage {
 	@Test
 	public void testAuthSet() throws Exception {
 		Request req;
-		Request template = col.getRequest(GET_AUTH_USER);
+		Request template = col3.getRequest(GET_AUTH_USER);
 
 		// auth builder: set existing token value
 		Auth auth = template.getAuth().builder().set("token", ENV_TOKEN_KEY).end();
@@ -344,7 +371,7 @@ public class TestCoverage {
 	@Test(expectedExceptions = IllegalArgumentException.class,
 			expectedExceptionsMessageRegExp = "Auth key not found: 'NEW_KEY'")
 	public void testAuthSetThrowWhenKeyNotFound() {
-		Request template = col.getRequest(GET_AUTH_USER);
+		Request template = col3.getRequest(GET_AUTH_USER);
 
 		// auth builder: add creates new key on cloned auth
 		Auth auth = template.getAuth().builder().add("NEW_KEY", TEST_USERNAME).end();
@@ -361,7 +388,7 @@ public class TestCoverage {
 	@Test
 	public void testHeaderSet() {
 		Request req;
-		Request template = col.getRequest(GET_AUTH_USER);
+		Request template = col3.getRequest(GET_AUTH_USER);
 
 		// header builder: set existing Content-Type value
 		Header header = template.getHeader().builder().set("Content-Type", ENV_TOKEN_KEY).end();
@@ -415,12 +442,26 @@ public class TestCoverage {
 				"{\"header\":[{\"key\":\"Accept\",\"value\":\"application/json\",\"disabled\":false}]}")
 				.getAsJsonObject());
 		assertEquals(header.get("Accept"), "application/json");
+		
+		// header object: disabled header is stored but skipped during request preparation
+		Collection col = Collection.load(JsonParser.parseString("{\"item\":[{\"name\":\"" + GET_AUTH_USER + "\","
+		                + "\"request\":{\"url\":{\"raw\":\"{{base_url}}\"},"
+		                + "\"header\":[{\"key\":\"Accept\",\"value\":\"application/json\",\"disabled\":true}]}}]}")
+		        		.getAsJsonObject());
+		Request template = col.getRequest(GET_AUTH_USER);
+		Request req = template.builder().build(env);
+		assertEquals(req.getHeader().get("unknonwn"), null);
+		assertEquals(req.getHeader().get("Accept"), null);
+		assertEquals(req.getHeader().toString(), "");
+		req.getHeader().getParam("Accept").setEnabled(true); // enabled
+		assertEquals(req.getHeader().get("Accept"), "application/json");
+		assertEquals(req.getHeader().toString(), "  Accept                              = application/json\n");
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class,
 			expectedExceptionsMessageRegExp = "Header key not found: 'NEW_KEY'")
 	public void testHeaderSetThrowWhenKeyNotFound() {
-		Request template = col.getRequest(GET_AUTH_USER);
+		Request template = col3.getRequest(GET_AUTH_USER);
 
 		// header builder: add creates new key on cloned header
 		Header header = template.getHeader().builder().add("NEW_KEY", TEST_USERNAME).end();
@@ -433,36 +474,59 @@ public class TestCoverage {
 	}
 
 	// -------------------------------------------------------------------------
-	// Test Query
+	// Test Url
 	// -------------------------------------------------------------------------
 
 	@Test
-	public void testQuerySet() throws Exception {
+	public void testUrlSet() throws Exception {
 		Collection col;
 		Request template;
 		Request req;
+		
+		this.col3.print();
 
-		// url object: query array with text variable → parsed query
-		col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image?text={{image_text}}\",\"query\":[{\"key\":\"text\",\"value\":\"{{image_text}}\"}]}}}"
-						+ "]}]}")
-				.getAsJsonObject());
-		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
-		assertEquals(template.getQueries().isEmpty(), false);
-		template.print();
+		// url object: raw URL and query array with text variable → parsed URL
+		template = this.col3.getFolder(IMAGE_FOLDER).getRequest(GENERATE_IMAGE);
+		assertEquals(template.getUrl().isEmpty(), false);
+		
+		Url url = template.getUrl().builder().set("text", "Hello World").end();
+		assertEquals(url.getOriginal(), "{{base_url}}/image/400x200/008080/ffffff?text=JPostman");
+		assertEquals(url.toString(), "{{base_url}}/image/400x200/008080/ffffff?text=Hello World");
+		assertEquals(url.toDebugString(), "=== Original URL: {{base_url}}/image/400x200/008080/ffffff?text=JPostman ===\n"
+													      + "{{base_url}}/image/400x200/008080/ffffff?text=Hello World");
+		req = template.builder().url().set("text", "Hello World").end().build(env);
+		req.getUrl().print();
+		
+		url = new Url("http://example.com/products?id=25&&type=book&");
+	    assertEquals(url.getRaw(), "http://example.com/products");
+	    assertEquals(url.get("id"), "25");
+	    assertEquals(url.get("type"), "book");
+	    assertEquals(url.getParams().size(), 2);
+	    assertEquals(url.toString(), "http://example.com/products?id=25&type=book");
+	    
+	    url = new Url("http://example.com/products?=invalid&id=25");
+	    assertEquals(url.getRaw(), "http://example.com/products");
+	    assertEquals(url.get("id"), "25");
+	    assertEquals(url.getParams().size(), 1);
+	    assertEquals(url.toString(),"http://example.com/products?id=25");
+	    
+	    url = new Url("http://example.com/products?id");
+	    assertEquals(url.getRaw(), "http://example.com/products");
+	    assertEquals(url.get("id"), "");
+	    assertEquals(url.getParams().size(), 1);
+	    assertEquals(url.toString(), "http://example.com/products?id=");
 
 		Environment env = new Environment("Test Env").builder()
 				.add("base_url", "https://dummyjson.com")
 				.add("image_text", "Original")
 				.end();
 
-		// query builder: set existing query value
+		// url builder: set existing query parameter value
 		req = template.builder()
-				.queries(q -> q.set("text", "JPostman"))
+				.url(q -> q.set("text", "JPostman"))
 				.build(env);
 
-		// url object: raw URL has query and fragment → query update preserves fragment
+		// url object: raw URL has url and fragment → url update preserves fragment
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image?text={{image_text}}#preview\",\"query\":[{\"key\":\"text\",\"value\":\"{{image_text}}\"}]}}}"
@@ -470,14 +534,32 @@ public class TestCoverage {
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
 		req = template.builder()
-				.queries(q -> q.set("text", "JPostman"))
+				.url(q -> q.set("text", "JPostman"))
 				.build(env);
 
-		assertEquals(template.getQuery().get("text"), "{{image_text}}");
-		assertEquals(req.getQuery().get("text"), "JPostman");
-		assertEquals(req.getUrl(), env.get("base_url") + "/image?text=JPostman#preview");
+		assertEquals(template.getUrl().get("text"), "{{image_text}}");
+		assertEquals(req.getUrl().get("text"), "JPostman");
+		assertEquals(req.toUrl(), env.get("base_url") + "/image?text=JPostman#preview");
+		
+		// url object: disabled query parameter is skipped during URL rebuild while original URL and fragment are preserved
+		col = Collection.load(JsonParser.parseString(
+		        "{\"item\":[{\"name\":\"" + GET_AUTH_USER + "\","
+		                + "\"request\":{\"url\":{\"raw\":\"{{base_url}}/image?text={{image_text}}#preview\","
+		                + "\"query\":[{\"key\":\"text\",\"value\":\"{{image_text}}\",\"disabled\":true}]}}}]}").getAsJsonObject());
+		template = col.getRequest(GET_AUTH_USER);
+		req = template.builder().build(env);
+		assertEquals(req.getUrl().get("unknonwn"), null);
+		assertEquals(req.getUrl().get("text"), null);
+		assertEquals(req.getUrl().toString(), "https://dummyjson.com/image#preview");
+		assertEquals(req.getUrl().getOriginal(), "{{base_url}}/image?text={{image_text}}#preview");
+		assertEquals(req.toUrl(), "https://dummyjson.com/image#preview");
+		req.getUrl().getParam("text").setEnabled(true); // enabled
+		assertEquals(req.getUrl().get("text"), "{{image_text}}");
+		assertEquals(req.getUrl().toString(), "https://dummyjson.com/image?text={{image_text}}#preview");
+		assertEquals(req.getUrl().getOriginal(), "{{base_url}}/image?text={{image_text}}#preview");
+		assertEquals(req.toUrl(), "https://dummyjson.com/image?text={{image_text}}#preview");
 
-		// raw URL has no query but url.query[] exists (unlikely with standard Postman export)
+		// raw URL has no query string but url.query[] exists
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image#preview\",\"query\":[{\"key\":\"text\",\"value\":\"{{image_text}}\"}]}}}"
@@ -485,28 +567,31 @@ public class TestCoverage {
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
 		req = template.builder()
-				.queries(q -> q.set("text", "JPostman"))
+				.url(q -> q.set("text", "JPostman"))
 				.build(env);
 
-		assertEquals(template.getQuery().get("text"), "{{image_text}}");
-		assertEquals(req.getQuery().get("text"), "JPostman");
-		assertEquals(req.getUrl(), env.get("base_url") + "/image?text=JPostman#preview");
+		assertEquals(template.getUrl().get("text"), "{{image_text}}");
+		assertEquals(req.getUrl().get("text"), "JPostman");
+		assertEquals(req.toUrl(), env.get("base_url") + "/image?text=JPostman#preview");
+		
+		url = new Url(null);
+		assertEquals(url.getRaw(), "");
+		assertEquals(url.getOriginal(), "");
 	}
 
 	@Test
-	public void testQuerySetFromString() throws Exception {
+	public void testUrlSetFromString() throws Exception {
 		Collection col;
 		Request template;
 
-		// url object: query field absent → empty
+		// url object: raw URL without query parameters → non-empty URL with empty params
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image\"}}}"
 						+ "]}]}")
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
-		assertEquals(template.getQueries().isEmpty(), true);
-		template.getQueries().print();
+		assertEquals(template.getUrl().isEmpty(), false);
 
 		// url object: query array key/value → parsed
 		col = Collection.load(JsonParser.parseString(
@@ -515,58 +600,69 @@ public class TestCoverage {
 						+ "]}]}")
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
-		assertEquals(template.getQueries().isEmpty(), false);
-		template.getQueries().print();
+		assertEquals(template.getUrl().isEmpty(), false);
 
-		// url object: query is null → empty
+		// url object: query field is null → raw query string still parsed
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image?text={{image_text}}\",\"query\":null}}}"
 						+ "]}]}")
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
-		assertEquals(template.getQueries().isEmpty(), true);
+		assertEquals(template.getUrl().isEmpty(), false);
 
-		// v2.1 query array: non-object element → skipped
+		// v2.1 url query array: non-object element skipped; raw query string still parsed
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image?text={{image_text}}\",\"query\":[1]}}}"
 						+ "]}]}")
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
-		assertEquals(template.getQueries().isEmpty(), true);
+		assertEquals(template.getUrl().isEmpty(), false);
 
-		// v2.1 query array: disabled=true and key absent → skipped
+		// v2.1 url query array: missing key skipped; raw query string still parsed
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image?text={{image_text}}\",\"query\":[{\"disabled\": true}]}}}"
 						+ "]}]}")
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
-		assertEquals(template.getQueries().isEmpty(), true);
+		assertEquals(template.getUrl().isEmpty(), false);
 
-		// v2.1 query array: key null and value null → skipped
+		// v2.1 url query array: null key/value skipped; raw query string still parsed
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image?text={{image_text}}\",\"query\":[{\"disabled\": false, \"key\": null, \"value\": null}]}}}"
 						+ "]}]}")
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
-		assertEquals(template.getQueries().isEmpty(), true);
+		assertEquals(template.getUrl().isEmpty(), false);
 
-		// v2.1 query array: disabled=true with key/value → skipped
+		// v2.1 url query array: disabled key/value skipped; raw query string still parsed
 		col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image?text={{image_text}}\",\"query\":[{\"disabled\": true, \"key\": \"user\", \"value\": null}]}}}"
 						+ "]}]}")
 				.getAsJsonObject());
 		template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
-		assertEquals(template.getQueries().isEmpty(), true);
+		assertEquals(template.getUrl().isEmpty(), false);
+	}
+
+
+	@Test
+	public void testUrlParsingFromRawString() {
+		// raw URL: base URL, query parameters, and fragment are separated and rebuilt
+		Url url = new Url("http://{{base_url}}/users?id={{id}}&type=book#preview");
+		assertEquals(url.getRaw(), "http://{{base_url}}/users#preview");
+		assertEquals(url.get("id"), "{{id}}");
+		assertEquals(url.get("type"), "book");
+		assertEquals(url.isEmpty(), false);
+		assertEquals(url.toString(), "http://{{base_url}}/users?id={{id}}&type=book#preview");
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class,
-			expectedExceptionsMessageRegExp = "Query key not found: 'NEW_KEY'")
-	public void testQuerySetThrowWhenKeyNotFound() throws Exception {
+			expectedExceptionsMessageRegExp = "Url key not found: 'NEW_KEY'")
+	public void testUrlSetThrowWhenKeyNotFound() throws Exception {
 		Collection col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
 						+ "{\"name\":\"" + GET_AUTH_USER + "\",\"request\":{\"url\":{\"raw\":\"{{base_url}}/image\"}}}"
@@ -574,12 +670,12 @@ public class TestCoverage {
 				.getAsJsonObject());
 		Request template = col.getFolder(PRODUCT_FOLDER).getRequest(GET_AUTH_USER);
 
-		// query builder: add creates new key on cloned query
-		Query query = template.getQueries().builder().add("NEW_KEY", TEST_USERNAME).end();
-		assertEquals(query.toString(), "  NEW_KEY                             = " + TEST_USERNAME + "\n");
+		// url builder: add creates new key on cloned url
+		Url url = template.getUrl().builder().add("NEW_KEY", TEST_USERNAME).end();
+		assertEquals(url.toString(), "{{base_url}}/image?NEW_KEY=" + TEST_USERNAME);
 
-		// query builder: set missing key on original query → throws
-		template.getQueries().builder().set("NEW_KEY", TEST_USERNAME);
+		// url builder: set missing key on original url → throws
+		template.getUrl().builder().set("NEW_KEY", TEST_USERNAME);
 	}
 
 	// -------------------------------------------------------------------------
@@ -589,7 +685,7 @@ public class TestCoverage {
 	@Test
 	public void testBodySet() throws Exception {
 		Request req;
-		Request template = col.getRequest(LOGIN_GET_TOKEN);
+		Request template = col3.getRequest(LOGIN_GET_TOKEN);
 		template.print();
 
 		// body builder: set existing username value
@@ -614,7 +710,7 @@ public class TestCoverage {
 
 	@Test
 	public void testBodyNewSet() throws Exception {
-		Request template = col.getRequest(GET_AUTH_USER);
+		Request template = col3.getRequest(GET_AUTH_USER);
 
 		// body builder: add supports number, boolean, and list values
 		Body body = template.getBody().builder()
@@ -806,7 +902,7 @@ public class TestCoverage {
 	@Test(expectedExceptions = IllegalArgumentException.class,
 			expectedExceptionsMessageRegExp = "Body key not found: 'NEW_KEY'")
 	public void testBodySetThrowWhenKeyNotFound() {
-		Request template = col.getRequest(LOGIN_GET_TOKEN);
+		Request template = col3.getRequest(LOGIN_GET_TOKEN);
 
 		// body builder: add creates new key on cloned JSON object body
 		Body body = template.getBody().builder().add("NEW_KEY", TEST_USERNAME).end();
@@ -850,10 +946,10 @@ public class TestCoverage {
 						+ "}]}]}")
 				.getAsJsonObject());
 		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getUrl(), "http://github.com");
+		assertEquals(req.toUrl(), "http://github.com");
 		assertEquals(req.getMethod(), "GET");
 		assertEquals(req.getFolderName(), PRODUCT_FOLDER);
-		assertEquals(req.getQueries().isEmpty(), true);
+		assertEquals(req.getUrl().isEmpty(), false);
 		req.print();
 
 		// request: description string → parsed directly
@@ -900,7 +996,7 @@ public class TestCoverage {
 						+ "}]}]}")
 				.getAsJsonObject());
 		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getUrl(), "");
+		assertEquals(req.toUrl(), "");
 
 		// request: url object without raw → empty string
 		col = Collection.load(JsonParser.parseString(
@@ -909,7 +1005,7 @@ public class TestCoverage {
 						+ "}]}]}")
 				.getAsJsonObject());
 		req = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-		assertEquals(req.getUrl(), "");
+		assertEquals(req.toUrl(), "");
 
 		// request auth: v2.1 basic array value absent → stored as ""
 		col = Collection.load(JsonParser.parseString(
@@ -959,19 +1055,19 @@ public class TestCoverage {
 		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"url\":[\"http://github.com\"]}}]}")
 		        .getAsJsonObject());
 		req = col.getRequest("Unnamed");
-		assertEquals(req.getUrl(), "");
+		assertEquals(req.toUrl(), "");
 		
 		// request url object: raw is null → empty URL
 		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"url\":{\"raw\":null}}}]}")
 		        .getAsJsonObject());
 		req = col.getRequest("Unnamed");
-		assertEquals(req.getUrl(), "");
+		assertEquals(req.toUrl(), "");
 		
 		// request url object: raw is object → empty URL
 		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"url\":{\"raw\":{\"value\":\"http://github.com\"}}}}]}")
 		        .getAsJsonObject());
 		req = col.getRequest("Unnamed");
-		assertEquals(req.getUrl(), "");
+		assertEquals(req.toUrl(), "");
 		
 		// request: description array → empty string
 		col = Collection.load(JsonParser.parseString("{\"item\":[{\"request\":{\"description\":[\"TODO\"]}}]}")

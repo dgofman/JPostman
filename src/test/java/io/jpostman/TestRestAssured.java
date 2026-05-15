@@ -96,7 +96,7 @@ public class TestRestAssured {
 		req.apply(given())
 				.auth().oauth2(env.get(ENV_TOKEN_KEY))
 				// .log().all()
-				.get(req.getUrl())
+				.get(req.toUrl())
 				.then()
 				.log().ifValidationFails()
 				.statusCode(200)
@@ -165,7 +165,7 @@ public class TestRestAssured {
 
 		// Build modified image request by overriding only one query parameter.
 		Request req2 = template.builder()
-				.queries(q -> q.set("text", "Hello World")) // or .queries().set("text", "Hello World").end()
+				.url(q -> q.set("text", "Hello World")) // or .queries().set("text", "Hello World").end()
 				.build(env);
 
 		// Log both requests to show how one Postman template can produce variations.

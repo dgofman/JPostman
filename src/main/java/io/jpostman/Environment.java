@@ -17,17 +17,21 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import io.jpostman.ParamBuilder.ParamInfo;
+
 /**
  * Represents a Postman environment and its key/value variables.
- * Variables are later used to resolve {@code {{name}}} placeholders in
- * requests, headers, queries, bodies, and auth fields.
+ *
+ * <p>Disabled variables are preserved internally, but they are excluded from
+ * {@link #getParams()} so they do not participate in {@code {{name}}}
+ * substitution.</p>
  */
 public class Environment {
 
 	private static final Logger log = LoggerFactory.getLogger(Environment.class);
 
 	private final String name;
-	private final Map<String, String> params = new LinkedHashMap<>();
+	private final Map<String, ParamInfo> params = new LinkedHashMap<>();
 
 	public Environment(String name) {
 		this.name = name;
@@ -38,43 +42,61 @@ public class Environment {
 		return name;
 	}
 
-	/** @return environment variables in insertion order. */
+	/** @return enabled environment variables in insertion order. */
 	public Map<String, String> getParams() {
-		return params;
+		Map<String, String> enabled = new LinkedHashMap<>();
+		params.forEach((key, info) -> {
+			if (info.enabled) {
+				enabled.put(key, info.value);
+			}
+		});
+		return enabled;
 	}
-
+	
 	/**
-	 * Looks up a variable by key.
+	 * Looks up parameter metadata by key.
 	 *
-	 * @param key variable name
-	 * @return variable value, or {@code null} when absent
+	 * @param key parameter name
+	 * @return matching {@link ParamInfo}, or {@code null} when absent
 	 */
-	public String get(String key) {
+	public ParamInfo getParam(String key) {
 		return params.get(key);
 	}
 
 	/**
-	 * Returns a {@link ParamBuilder} pre-populated from this environment's variables.
+	 * Looks up an enabled variable by key.
+	 *
+	 * @param key variable name
+	 * @return variable value, or {@code null} when absent or disabled
 	 */
+	public String get(String key) {
+		ParamInfo info = getParam(key);
+		return info != null && info.enabled ? info.value : null;
+	}
+
+	/** Returns a {@link ParamBuilder} pre-populated from this environment. */
 	public ParamBuilder<Environment> builder() {
 		String envName = this.name;
-		Map<String, String> params = new LinkedHashMap<>(this.params);
+		Map<String, ParamInfo> params = new LinkedHashMap<>(this.params);
 		ParamBuilder.Builder<Environment> buildFn = () -> {
 			@NonNull Environment env = new Environment(envName);
-			params.forEach((String key, String value) -> env.params.put(key, value));
+			params.forEach(env.params::put);
 			return env;
 		};
 		return new ParamBuilder<Environment>(
 				// ADD
-				(String key, Object value) -> params.put(key, (String) value),
-				// SET (Updates an existing key; throws if the key does not exist)
+				(String key, Object value) -> params.put(key, new ParamInfo(String.valueOf(value), true)),
+				// SET
 				(String key, Object value) -> {
-					if (!params.containsKey(key))
+					ParamInfo info = params.get(key);
+					if (info == null) {
 						throw new IllegalArgumentException("Environment key not found: '" + key + "'");
-					params.put(key, (String) value);
+					}
+					params.put(key, new ParamInfo(String.valueOf(value), info.enabled));
 				},
 				// RESOLVE
-				vars -> vars.forEach((String key, String value) -> params.put(key, value)),
+				vars -> vars.forEach((String key, String value) ->
+						params.put(key, new ParamInfo(value, true))),
 				// BUILD
 				buildFn);
 	}
@@ -82,21 +104,12 @@ public class Environment {
 	/**
 	 * Load a Postman environment from a file path. Opens and closes the file
 	 * internally.
-	 *
-	 * @param filePath absolute or relative path to the *.postman_environment.json
-	 *                 file
-	 * @return populated {@link Environment} instance
 	 */
 	public static Environment load(String filePath) throws IOException {
 		return load(new FileInputStream(filePath));
 	}
 
-	/**
-	 * Load a Postman environment from an input stream. The stream is closed by this method.
-	 *
-	 * @param is input stream positioned at the start of the environment JSON
-	 * @return populated {@link Environment} instance
-	 */
+	/** Load a Postman environment from an input stream. */
 	public static Environment load(InputStream is) throws IOException {
 		try (Reader reader = new InputStreamReader(is)) {
 			return load(JsonParser.parseReader(reader).getAsJsonObject());
@@ -105,14 +118,14 @@ public class Environment {
 
 	/**
 	 * Load an environment from an already parsed JSON object. Disabled entries and
-	 * entries without a key are skipped. Missing values are stored as empty strings.
+	 * entries without a key are preserved/skipped respectively. Missing values are
+	 * stored as empty strings.
 	 *
 	 * @param root environment root JSON object
 	 * @return populated environment
 	 */
 	public static Environment load(JsonObject root) throws IOException {
-		String envName = root.has("name") && 
-				!root.get("name").isJsonNull()
+		String envName = root.has("name") && !root.get("name").isJsonNull()
 				? root.get("name").getAsString()
 				: "Unknown Environment";
 		Environment env = new Environment(envName);
@@ -123,41 +136,41 @@ public class Environment {
 					continue;
 				}
 				JsonObject var = el.getAsJsonObject();
-				boolean enabled = !var.has("enabled") || var.get("enabled").getAsBoolean();
-				if (enabled && var.has("key") && !var.get("key").isJsonNull()) {
+				if (var.has("key") && !var.get("key").isJsonNull()) {
 					String key = var.get("key").getAsString();
-					String value = var.has("value") && 
-							!var.get("value").isJsonNull()
+					String value = var.has("value") && !var.get("value").isJsonNull()
 							? var.get("value").getAsString()
 							: "";
-					env.params.put(key, value);
+					boolean enabled = !var.has("enabled") || var.get("enabled").getAsBoolean();
+					env.params.put(key, new ParamInfo(value, enabled));
 				}
 			}
 		}
 		return env;
 	}
 
-	/** Logs the environment name and variables. */
+	/** Logs the environment name and enabled variables. */
 	public void print() {
 		log.trace(toDebugString());
 	}
 
-	/** Returns verbose diagnostic representation including details. */
+	/** Returns verbose diagnostic representation including enabled variables. */
 	public String toDebugString() {
+		Map<String, String> enabled = getParams();
 		StringBuilder sb = new StringBuilder();
-	    sb.append(String.format("=== Environment: %s (%d variable%s) ===", name, params.size(), params.size() == 1 ? "" : "s"));
-		if (params.isEmpty()) {
+		sb.append(String.format("=== Environment: %s (%d variable%s) ===", name, enabled.size(), enabled.size() == 1 ? "" : "s"));
+		if (enabled.isEmpty()) {
 			sb.append("\n  (no variables)");
 		} else {
-	        sb.append(toString());
+			sb.append('\n' + toString());
 		}
 		return sb.toString();
 	}
-	
+
 	@Override
 	public String toString() {
-		return params.entrySet().stream().map(e -> String.format("  %-35s = %s\n", e.getKey(), e.getValue()))
+		return getParams().entrySet().stream()
+				.map(e -> String.format("  %-35s = %s\n", e.getKey(), e.getValue()))
 				.collect(Collectors.joining());
-
 	}
 }
