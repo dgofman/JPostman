@@ -1,7 +1,7 @@
 # JPostman
 
 ![Java](https://img.shields.io/badge/Java-11%2B-orange)
-[![Build](https://github.com/dgofman/JPostman/actions/workflows/maven.yml/badge.svg)](https://github.com/dgofman/JPostman/actions/workflows/maven.yml)
+[![Build](https://github.com/dgofman/JPostman/actions/workflows/build.yml/badge.svg)](https://github.com/dgofman/JPostman/actions/workflows/build.yml)
 ![Maven](https://img.shields.io/badge/Maven-3.x-blue)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.dgofman/jpostman)](https://central.sonatype.com/artifact/io.github.dgofman/jpostman)
 ![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/dgofman/JPostman)
