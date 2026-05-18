@@ -153,10 +153,10 @@ public class Request {
 		private final String method;
 		private final String folderName;
 		private final String description;
-		private final ParamBuilder<Url> urlBuilder;
-		private final ParamBuilder<Header> headerBuilder;
-		private final ParamBuilder<Auth> authBuilder;
-		private final ParamBuilder<Body> bodyBuilder;
+		private final Params<Url> urlBuilder;
+		private final Params<Header> headerBuilder;
+		private final Params<Auth> authBuilder;
+		private final Params<Body> bodyBuilder;
 
 		private RequestBuilder(Request req) {
 			this.name = req.name;
@@ -313,9 +313,9 @@ public class Request {
 		 * Nested builder step used for headers, queries, body, and auth.
 		 */
 		public class ParamStep {
-			private final ParamBuilder<?> delegate;
+			private final Params<?> delegate;
 
-			ParamStep(ParamBuilder<?> delegate) {
+			ParamStep(Params<?> delegate) {
 				this.delegate = delegate;
 			}
 

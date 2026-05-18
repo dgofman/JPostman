@@ -17,7 +17,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import io.jpostman.ParamBuilder.ParamInfo;
+import io.jpostman.Params.Entry;
 
 /**
  * Represents a Postman environment and its key/value variables.
@@ -31,7 +31,7 @@ public class Environment {
 	private static final Logger log = LoggerFactory.getLogger(Environment.class);
 
 	private final String name;
-	private final Map<String, ParamInfo> params = new LinkedHashMap<>();
+	private final Map<String, Entry> params = new LinkedHashMap<>();
 
 	public Environment(String name) {
 		this.name = name;
@@ -57,9 +57,9 @@ public class Environment {
 	 * Looks up parameter metadata by key.
 	 *
 	 * @param key parameter name
-	 * @return matching {@link ParamInfo}, or {@code null} when absent
+	 * @return matching {@link Entry}, or {@code null} when absent
 	 */
-	public ParamInfo getParam(String key) {
+	public Entry getParam(String key) {
 		return params.get(key);
 	}
 
@@ -70,33 +70,33 @@ public class Environment {
 	 * @return variable value, or {@code null} when absent or disabled
 	 */
 	public String get(String key) {
-		ParamInfo info = getParam(key);
+		Entry info = getParam(key);
 		return info != null && info.enabled ? info.value : null;
 	}
 
-	/** Returns a {@link ParamBuilder} pre-populated from this environment. */
-	public ParamBuilder<Environment> builder() {
+	/** Returns a {@link Params} pre-populated from this environment. */
+	public Params<Environment> builder() {
 		String envName = this.name;
-		Map<String, ParamInfo> params = new LinkedHashMap<>(this.params);
-		ParamBuilder.Builder<Environment> buildFn = () -> {
+		Map<String, Entry> params = new LinkedHashMap<>(this.params);
+		Params.Builder<Environment> buildFn = () -> {
 			@NonNull Environment env = new Environment(envName);
 			params.forEach(env.params::put);
 			return env;
 		};
-		return new ParamBuilder<Environment>(
+		return new Params<Environment>(
 				// ADD
-				(String key, Object value) -> params.put(key, new ParamInfo(String.valueOf(value), true)),
+				(String key, Object value) -> params.put(key, new Entry(String.valueOf(value), true)),
 				// SET
 				(String key, Object value) -> {
-					ParamInfo info = params.get(key);
+					Entry info = params.get(key);
 					if (info == null) {
 						throw new IllegalArgumentException("Environment key not found: '" + key + "'");
 					}
-					params.put(key, new ParamInfo(String.valueOf(value), info.enabled));
+					params.put(key, new Entry(String.valueOf(value), info.enabled));
 				},
 				// RESOLVE
 				vars -> vars.forEach((key, value) ->
-						params.put(key, new ParamInfo(String.valueOf(value), true))),
+						params.put(key, new Entry(String.valueOf(value), true))),
 				// BUILD
 				buildFn);
 	}
@@ -142,7 +142,7 @@ public class Environment {
 							? var.get("value").getAsString()
 							: "";
 					boolean enabled = !var.has("enabled") || var.get("enabled").getAsBoolean();
-					env.params.put(key, new ParamInfo(value, enabled));
+					env.params.put(key, new Entry(value, enabled));
 				}
 			}
 		}

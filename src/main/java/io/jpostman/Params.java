@@ -20,7 +20,7 @@ import java.util.function.Consumer;
  *
  * @param <T> the type produced by {@link #end()}
  */
-public class ParamBuilder<T> {
+public class Params<T> {
 
 	private static final Gson GSON = new Gson();
 	private static final Handlebars HANDLEBARS = new Handlebars().with(EscapingStrategy.NOOP);
@@ -32,19 +32,19 @@ public class ParamBuilder<T> {
 		T build();
 	}
 
-	/** Adds or updates a key without validation. */
+	/** Adds or overwrites a request-part value. */
 	private final BiConsumer<String, Object> onPut;
 
 	/** Updates an existing key and lets the target object throw when missing. */
 	private final BiConsumer<String, Object> onSet;
 
-	/** Resolves variable placeholders using the supplied environment variables. */
+	/** Resolves template placeholders using the supplied variables. */
 	private final Consumer<Map<String, ?>> onResolve;
 
 	/** Builds the final target object from the builder state. */
 	private final Builder<T> onBuild;
 
-	ParamBuilder(BiConsumer<String, Object> onPut, BiConsumer<String, Object> onSet,
+	Params(BiConsumer<String, Object> onPut, BiConsumer<String, Object> onSet,
 			Consumer<Map<String, ?>> onResolve, Builder<T> onBuild) {
 		this.onPut = onPut;
 		this.onSet = onSet;
@@ -53,7 +53,7 @@ public class ParamBuilder<T> {
 	}
 
 	/** Adds or overwrites the key unconditionally. */
-	public ParamBuilder<T> add(String key, Object value) {
+	public Params<T> add(String key, Object value) {
 		onPut.accept(key, value);
 		return this;
 	}
@@ -64,13 +64,13 @@ public class ParamBuilder<T> {
 	 * @throws IllegalArgumentException if the target object requires the key to
 	 *                                  exist and the key is missing
 	 */
-	public ParamBuilder<T> set(String key, Object value) {
+	public Params<T> set(String key, Object value) {
 		onSet.accept(key, value);
 		return this;
 	}
 
 	/** Substitutes all {@code {{key}}} tokens using the supplied variable map. */
-	public ParamBuilder<T> resolve(Map<String, ?> vars) {
+	public Params<T> resolve(Map<String, ?> vars) {
 		if (vars != null) {
 			onResolve.accept(vars);
 		}
@@ -106,6 +106,29 @@ public class ParamBuilder<T> {
 		return end();
 	}
 
+	/**
+	 * Creates an ordered variable map from alternating key/value pairs.
+	 *
+	 * @param key first variable name
+	 * @param value first variable value
+	 * @param rest remaining key/value pairs
+	 * @return ordered variable map
+	 */
+	public static Map<String, Object> asMap(String key, Object value, Object... rest) {
+	    return toMap(false, key, value, rest);
+	}
+
+	/**
+	 * Creates an ordered variable map and JSON-stringifies String values.
+	 *
+	 * @param key first variable name
+	 * @param value first variable value
+	 * @param rest remaining key/value pairs
+	 * @return ordered JSON-ready variable map
+	 */
+	public static Map<String, Object> asJson(String key, Object value, Object... rest) {
+	    return toMap(true, key, value, rest);
+	}
 
 
 	/**
@@ -222,7 +245,7 @@ public class ParamBuilder<T> {
 	 * the original collection structure while the public API can still expose only
 	 * enabled values for execution and variable substitution.</p>
 	 */
-	static public class ParamInfo {
+	static public class Entry {
 
 		/** Raw parameter value. Disabled parameters keep their value here too. */
 		final String value;
@@ -236,7 +259,7 @@ public class ParamBuilder<T> {
 		 * @param value parameter value; converted to an empty string when {@code null}
 		 * @param enabled true when the parameter should be active
 		 */
-		ParamInfo(String value, boolean enabled) {
+		Entry(String value, boolean enabled) {
 			this.value = value;
 			this.enabled = enabled;
 		}

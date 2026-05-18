@@ -128,19 +128,19 @@ public class Body {
     /**
      * Creates a builder for this body.
      *
-     * <p>Template replacement is handled through {@link ParamBuilder}. JSON
+     * <p>Template replacement is handled through {@link Params}. JSON
      * parsing is performed only inside the builder, so raw template bodies like
      * {@code {"username": {{TOKEN}}}} can be resolved first and mutated after
      * they become valid JSON.</p>
      */
-    public ParamBuilder<Body> builder() {
+    public Params<Body> builder() {
         final String bodyMode = this.mode;
         final String bodyLang = this.language;
         final String[] workingRaw = new String[] { raw };
         final JsonElement[] workingParsed = new JsonElement[] { initialParsed(bodyMode, raw) };
         final List<BodyMutation> pendingMutations = new ArrayList<>();
 
-        return new ParamBuilder<>(
+        return new Params<>(
         		// ADD
                 (key, value) -> pendingMutations.add(new BodyMutation(key, value, true)),
                 // SET
@@ -151,7 +151,7 @@ public class Body {
 				        applyPendingMutations(workingRaw, workingParsed, pendingMutations);
 				        workingParsed[0] = substituteJson(workingParsed[0], vars);
 				    } else {
-				        workingRaw[0] = ParamBuilder.substituteVars(workingRaw[0], vars);
+				        workingRaw[0] = Params.substituteVars(workingRaw[0], vars);
 				        workingParsed[0] = tryParseJson(workingRaw[0]);
 
 				        applyPendingMutations(workingRaw, workingParsed, pendingMutations);
@@ -217,7 +217,7 @@ public class Body {
             return el;
         }
         if (el.isJsonPrimitive() && el.getAsJsonPrimitive().isString()) {
-            return GSON.toJsonTree(ParamBuilder.substituteVars(el.getAsString(), vars));
+            return GSON.toJsonTree(Params.substituteVars(el.getAsString(), vars));
         }
         if (el.isJsonArray()) {
             JsonArray arr = el.getAsJsonArray();

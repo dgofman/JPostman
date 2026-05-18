@@ -12,7 +12,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.jpostman.ParamBuilder.ParamInfo;
+import io.jpostman.Params.Entry;
 
 /**
  * Represents the HTTP headers of a Postman request.
@@ -26,7 +26,7 @@ public class Header {
 
 	private static final Logger log = LoggerFactory.getLogger(Header.class);
 
-	private final Map<String, ParamInfo> params = new LinkedHashMap<>();
+	private final Map<String, Entry> params = new LinkedHashMap<>();
 
 	/** @return true when no enabled headers are present. */
 	public boolean isEmpty() {
@@ -48,9 +48,9 @@ public class Header {
 	 * Looks up parameter metadata by key.
 	 *
 	 * @param key parameter name
-	 * @return matching {@link ParamInfo}, or {@code null} when absent
+	 * @return matching {@link Entry}, or {@code null} when absent
 	 */
-	public ParamInfo getParam(String key) {
+	public Entry getParam(String key) {
 		return params.get(key);
 	}
 
@@ -61,7 +61,7 @@ public class Header {
 	 * @return header value, or {@code null} when absent or disabled
 	 */
 	public String get(String key) {
-		ParamInfo info = getParam(key);
+		Entry info = getParam(key);
 		return info != null && info.enabled ? info.value : null;
 	}
 
@@ -94,38 +94,38 @@ public class Header {
 			String value = h.has("value") && !h.get("value").isJsonNull() ? h.get("value").getAsString() : "";
 			boolean enabled = !(h.has("disabled") && h.get("disabled").getAsBoolean());
 			if (!key.isBlank()) {
-				header.params.put(key, new ParamInfo(value, enabled));
+				header.params.put(key, new Entry(value, enabled));
 			}
 		}
 		return header;
 	}
 
-	/** Returns a {@link ParamBuilder} pre-populated from this header map. */
-	public ParamBuilder<Header> builder() {
-		Map<String, ParamInfo> params = new LinkedHashMap<>(this.params);
-		ParamBuilder.Builder<Header> buildFn = () -> {
+	/** Returns a {@link Params} pre-populated from this header map. */
+	public Params<Header> builder() {
+		Map<String, Entry> params = new LinkedHashMap<>(this.params);
+		Params.Builder<Header> buildFn = () -> {
 			Header header = new Header();
 			params.forEach(header.params::put);
 			return header;
 		};
-		return new ParamBuilder<Header>(
+		return new Params<Header>(
 				// ADD
-				(String key, Object value) -> params.put(key, new ParamInfo(String.valueOf(value), true)),
+				(String key, Object value) -> params.put(key, new Entry(String.valueOf(value), true)),
 				// SET
 				(String key, Object value) -> {
-					ParamInfo info = params.get(key);
+					Entry info = params.get(key);
 					if (info == null) {
 						throw new IllegalArgumentException("Header key not found: '" + key + "'");
 					}
-					params.put(key, new ParamInfo(String.valueOf(value), info.enabled));
+					params.put(key, new Entry(String.valueOf(value), info.enabled));
 				},
 				// RESOLVE
 				vars -> {
 					for (String k : new ArrayList<>(params.keySet())) {
-						ParamInfo info = params.get(k);
+						Entry info = params.get(k);
 						if (info.enabled) {
-							params.put(k, new ParamInfo(
-									ParamBuilder.substituteVars(info.value, vars), true));
+							params.put(k, new Entry(
+									Params.substituteVars(info.value, vars), true));
 						}
 					}
 				},

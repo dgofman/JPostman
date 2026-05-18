@@ -16,6 +16,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -190,10 +191,18 @@ public class TestCoverage {
 				"[GET   ] Get current auth user                    -> {{base_url}}/auth/me");
 
 		// param helper: null input should not throw
-		ParamBuilder.substituteVars(null, null);
+		Params.substituteVars(null, null);
+		
+		//
+		Map<String, Object> result1 = Params.asMap("key1", "value", "key2", true, "key3", 12.34, "key4", null, "key5", Arrays.asList(1,2,3));
+		assertEquals(result1.toString(), "{key1=value, key2=true, key3=12.34, key4=null, key5=[1, 2, 3]}");
+		
+		//
+		Map<String, Object> result2 = Params.asJson("key1", "value", "key2", true, "key3", 12.34, "key4", null, "key5", Arrays.asList(1,2,3));
+		assertEquals(result2.toString(), "{key1=\"value\", key2=true, key3=12.34, key4=null, key5=[1, 2, 3]}");
 		
 		// substituteVars: null vars → original value returned
-		assertEquals(ParamBuilder.substituteVars("{{username}}", null), "{{username}}");
+		assertEquals(Params.substituteVars("{{username}}", null), "{{username}}");
 	}
 
 	@Test
@@ -810,7 +819,7 @@ public class TestCoverage {
 		assertNotNull(body.getParsed());
 		assertEquals(body.getParsed().isJsonArray(), true);
 		assertEquals(body.builder().end().getRaw(), "[\"{{base_url}}\",\"{{username}}\",\"{{password}}\"]");
-		assertEquals(ParamBuilder.substituteVars(body.builder().end().getRaw(), env.getParams()), "[\"https://dummyjson.com\",\"emilys\",\"emilyspass\"]");
+		assertEquals(Params.substituteVars(body.builder().end().getRaw(), env.getParams()), "[\"https://dummyjson.com\",\"emilys\",\"emilyspass\"]");
 
 		// raw/json: invalid JSON raw string → parse failure ignored, mode remains raw
 		body = Body.from(JsonParser.parseString(
@@ -850,14 +859,14 @@ public class TestCoverage {
 		    .getAsJsonObject());
 		assertEquals(body.getMode(), "urlencoded");
 		assertEquals(body.getRaw(), "[{\"key\":\"username\",\"value\":\"{{username}}\"}]");
-		assertEquals(ParamBuilder.substituteVars(body.getRaw(), env.getParams()), "[{\"key\":\"username\",\"value\":\"emilys\"}]");
+		assertEquals(Params.substituteVars(body.getRaw(), env.getParams()), "[{\"key\":\"username\",\"value\":\"emilys\"}]");
 		
 		// formdata mode: object payload → serialized as JSON object
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"formdata\",\"formdata\":{\"username\":\"{{username}}\"}}}")
 			    .getAsJsonObject());
 		assertEquals(body.getMode(), "formdata");
 		assertEquals(body.getRaw(), "{\"username\":\"{{username}}\"}");
-		assertEquals(ParamBuilder.substituteVars(body.getRaw(), env.getParams()), "{\"username\":\"emilys\"}");
+		assertEquals(Params.substituteVars(body.getRaw(), env.getParams()), "{\"username\":\"emilys\"}");
 		
 
 		// formdata mode: primitive boolean payload → preserved as primitive fallback
@@ -923,11 +932,11 @@ public class TestCoverage {
 		assertEquals(resolved.getRaw(), "<id>42</id>");
 
 		// Missing variables use normal Handlebars behavior: unresolved values become empty strings.
-		assertEquals(ParamBuilder.substituteVars("<id>{{UNKNOWN_ID}}</id>", Map.of("USER_ID", "42")),
+		assertEquals(Params.substituteVars("<id>{{UNKNOWN_ID}}</id>", Map.of("USER_ID", "42")),
 				"<id></id>");
-		assertEquals(ParamBuilder.substituteVars("<id>{{ USER_ID }}</id><missing>{{UNKNOWN_ID}}</missing>",
+		assertEquals(Params.substituteVars("<id>{{ USER_ID }}</id><missing>{{UNKNOWN_ID}}</missing>",
 				Map.of("USER_ID", "42")), "<id>42</id><missing></missing>");
-		assertEquals(ParamBuilder.substituteVars("<id>{{UNKNOWN_ID}</id>", Map.of("USER_ID", "42")),
+		assertEquals(Params.substituteVars("<id>{{UNKNOWN_ID}</id>", Map.of("USER_ID", "42")),
 				"<id>{{UNKNOWN_ID}</id>");
 
 		body = Body.from(JsonParser.parseString(
@@ -937,7 +946,7 @@ public class TestCoverage {
 				"{\"id\":\"\"}");
 
 		// Body mutation is intentionally simple: top-level JSON object keys only.
-		// Template replacement is delegated to Handlebars through ParamBuilder.
+		// Template replacement is delegated to Handlebars through Params
 		body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"id\\\":\\\"{{USER_ID}}\\\",\\\"role\\\":\\\"{{ROLE}}\\\"}\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
 				.getAsJsonObject());
@@ -1011,7 +1020,7 @@ public class TestCoverage {
 	}
 
 	@Test
-	public void testParamBuilderEndWithParamsAndNullResolve() {
+	public void testParamsEndWithParamsAndNullResolve() {
 		Body body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\",\\\"password\\\":\\\"{{password}}\\\"}\","
 						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}").getAsJsonObject());

@@ -12,7 +12,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.jpostman.ParamBuilder.ParamInfo;
+import io.jpostman.Params.Entry;
 
 /**
  * Represents a request URL and its query parameters.
@@ -33,7 +33,7 @@ public class Url {
 
 	private String raw;
 	private final String original;
-	private final Map<String, ParamInfo> params = new LinkedHashMap<>();
+	private final Map<String, Entry> params = new LinkedHashMap<>();
 
 	/**
 	 * Creates a URL from a raw URL string.
@@ -97,7 +97,7 @@ public class Url {
 				boolean enabled = !(q.has("disabled") && q.get("disabled").getAsBoolean());
 
 				if (!key.isBlank()) {
-					url.params.put(key, new ParamInfo(value, enabled));
+					url.params.put(key, new Entry(value, enabled));
 				}
 			}
 		}
@@ -144,7 +144,7 @@ public class Url {
 			String valuePart = parts.length > 1 ? parts[1] : "";
 
 			if (!key.isBlank()) {
-				params.put(key, new ParamInfo(valuePart, true));
+				params.put(key, new Entry(valuePart, true));
 			}
 		}
 	}
@@ -174,9 +174,9 @@ public class Url {
 	 * Looks up parameter metadata by key.
 	 *
 	 * @param key parameter name
-	 * @return matching {@link ParamInfo}, or {@code null} when absent
+	 * @return matching {@link Entry}, or {@code null} when absent
 	 */
-	public ParamInfo getParam(String key) {
+	public Entry getParam(String key) {
 		return params.get(key);
 	}
 
@@ -187,7 +187,7 @@ public class Url {
 	 * @return query value, or {@code null} when absent or disabled
 	 */
 	public String get(String key) {
-		ParamInfo info = getParam(key);
+		Entry info = getParam(key);
 		return info != null && info.enabled ? info.value : null;
 	}
 
@@ -197,29 +197,29 @@ public class Url {
 	}
 
 	/** Returns a builder pre-populated from this URL. */
-	public ParamBuilder<Url> builder() {
+	public Params<Url> builder() {
 		final String[] value = { raw };
-		Map<String, ParamInfo> params = new LinkedHashMap<>(this.params);
-		return new ParamBuilder<>(
+		Map<String, Entry> params = new LinkedHashMap<>(this.params);
+		return new Params<>(
 				// ADD
-				(key, val) -> params.put(key, new ParamInfo(String.valueOf(val), true)),
+				(key, val) -> params.put(key, new Entry(String.valueOf(val), true)),
 				// SET
 				(key, val) -> {
-					ParamInfo info = params.get(key);
+					Entry info = params.get(key);
 					if (info == null) {
 						throw new IllegalArgumentException("URL query parameter not found: '" + key + "'");
 					}
-					params.put(key, new ParamInfo(String.valueOf(val), info.enabled));
+					params.put(key, new Entry(String.valueOf(val), info.enabled));
 				},
 				// RESOLVE
 				vars -> {
-					value[0] = ParamBuilder.substituteVars(value[0], vars);
+					value[0] = Params.substituteVars(value[0], vars);
 
 					for (String key : new ArrayList<>(params.keySet())) {
-						ParamInfo info = params.get(key);
+						Entry info = params.get(key);
 						if (info.enabled) {
-							params.put(key, new ParamInfo(
-									ParamBuilder.substituteVars(info.value, vars), true));
+							params.put(key, new Entry(
+									Params.substituteVars(info.value, vars), true));
 						}
 					}
 				},

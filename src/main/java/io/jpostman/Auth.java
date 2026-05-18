@@ -130,13 +130,13 @@ public class Auth {
 	}
 
 	/**
-	 * Returns a {@link ParamBuilder} pre-populated from this auth's params.
+	 * Returns a {@link Params} pre-populated from this auth's params.
 	 */
-	public ParamBuilder<Auth> builder() {
+	public Params<Auth> builder() {
 		String authType = this.type;
 		Map<String, String> params = new LinkedHashMap<>(this.params);
-		ParamBuilder.Builder<Auth> buildFn = () -> new Auth(authType, new LinkedHashMap<>(params));
-		return new ParamBuilder<Auth>(
+		Params.Builder<Auth> buildFn = () -> new Auth(authType, new LinkedHashMap<>(params));
+		return new Params<Auth>(
 				// ADD
 				(String key, Object value) -> params.put(key, String.valueOf(value)),
 				// SET (Updates an existing key; throws if the key does not exist)
@@ -148,7 +148,7 @@ public class Auth {
 				// RESOLVE
 				vars -> {
 					for (String k : new ArrayList<>(params.keySet())) {
-						params.put(k, ParamBuilder.substituteVars(params.get(k), vars));
+						params.put(k, Params.substituteVars(params.get(k), vars));
 					}
 				},
 				// BUILD

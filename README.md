@@ -496,7 +496,7 @@ This means `url().set("KEY", value)` was used, but the query parameter does not 
 If a template variable is missing from the supplied map/environment, Handlebars renders it as an empty value:
 
 ```java
-ParamBuilder.substituteVars("<id>{{UNKNOWN_ID}}</id>", Map.of("USER_ID", "42"));
+Params.substituteVars("<id>{{UNKNOWN_ID}}</id>", Map.of("USER_ID", "42"));
 ```
 
 Result:
