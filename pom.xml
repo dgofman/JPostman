@@ -6,7 +6,7 @@
 
 	<groupId>io.github.dgofman</groupId>
 	<artifactId>jpostman</artifactId>
-	<version>1.1.1</version>
+	<version>1.2.0</version>
 	<packaging>jar</packaging>
 
 	<name>JPostman</name>
@@ -58,6 +58,7 @@
 		<slf4j.version>2.0.17</slf4j.version>
 		<logback.version>1.5.19</logback.version>
 		<jspecify.version>1.0.0</jspecify.version>
+		<handlebars.version>4.3.1</handlebars.version>
 		<testng.version>7.11.0</testng.version>
 		<rest-assured.version>5.5.0</rest-assured.version>
 		<hamcrest.version>2.2</hamcrest.version>
@@ -92,6 +93,12 @@
 			<groupId>io.rest-assured</groupId>
 			<artifactId>rest-assured</artifactId>
 			<version>${rest-assured.version}</version>
+		</dependency>
+		
+		<dependency>
+		    <groupId>com.github.jknack</groupId>
+		    <artifactId>handlebars</artifactId>
+		    <version>${handlebars.version}</version>
 		</dependency>
 
 		<!-- Test dependencies used by src/test/java -->

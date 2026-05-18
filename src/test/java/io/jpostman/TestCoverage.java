@@ -409,6 +409,19 @@ public class TestCoverage {
 		// header builder: original template remains unchanged
 		assertEquals(template.getHeader().toString(), "  Content-Type                        = application/json\n");
 		assertEquals(template.getHeader().getParams().size(), 1);
+		
+		// v2.1 array: key is null → skipped
+		header = Header.from(JsonParser.parseString(
+		        "{\"header\":[{\"key\":null,\"value\":\"v\"}]}")
+		        .getAsJsonObject());
+		assertEquals(header.isEmpty(), true);
+
+		// v2.1 array: value is null → stored as empty string
+		header = Header.from(JsonParser.parseString(
+		        "{\"header\":[{\"key\":\"X-NullValue\",\"value\":null}]}")
+		        .getAsJsonObject());
+		assertEquals(header.get("X-NullValue"), "");
+		assertEquals(header.toString(), "  X-NullValue                         = \n");
 	}
 
 	@Test
@@ -899,6 +912,44 @@ public class TestCoverage {
 		assertEquals(body.isEmpty(), true);
 	}
 
+	@Test
+	public void testBodyHandlebarsTemplatesAndSimpleMutations() {
+		// raw/json body can contain a template fragment that is not valid JSON by itself.
+		// Handlebars resolution must preserve the original raw body instead of converting it to {}.
+		Body body = Body.from(JsonParser.parseString(
+				"{\"body\":{\"mode\":\"raw\",\"raw\":\"<id>{{USER_ID}}</id>\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+				.getAsJsonObject());
+		Body resolved = body.builder().resolve(Map.of("USER_ID", "42")).end();
+		assertEquals(resolved.getRaw(), "<id>42</id>");
+
+		// Missing variables use normal Handlebars behavior: unresolved values become empty strings.
+		assertEquals(ParamBuilder.substituteVars("<id>{{UNKNOWN_ID}}</id>", Map.of("USER_ID", "42")),
+				"<id></id>");
+		assertEquals(ParamBuilder.substituteVars("<id>{{ USER_ID }}</id><missing>{{UNKNOWN_ID}}</missing>",
+				Map.of("USER_ID", "42")), "<id>42</id><missing></missing>");
+		assertEquals(ParamBuilder.substituteVars("<id>{{UNKNOWN_ID}</id>", Map.of("USER_ID", "42")),
+				"<id>{{UNKNOWN_ID}</id>");
+
+		body = Body.from(JsonParser.parseString(
+				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"id\\\":\\\"{{UNKNOWN_ID}}\\\"}\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+				.getAsJsonObject());
+		assertEquals(body.builder().resolve(Map.of("USER_ID", "42")).end().getRaw(),
+				"{\"id\":\"\"}");
+
+		// Body mutation is intentionally simple: top-level JSON object keys only.
+		// Template replacement is delegated to Handlebars through ParamBuilder.
+		body = Body.from(JsonParser.parseString(
+				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"id\\\":\\\"{{USER_ID}}\\\",\\\"role\\\":\\\"{{ROLE}}\\\"}\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+				.getAsJsonObject());
+		resolved = body.builder()
+				.set("id", "007")
+				.add("traceId", "abc-123")
+				.resolve(Map.of("ROLE", "admin"))
+				.end();
+		assertEquals(resolved.getRaw(),
+				"{\"id\":\"007\",\"role\":\"admin\",\"traceId\":\"abc-123\"}");
+	}
+
 	@Test(expectedExceptions = IllegalArgumentException.class,
 			expectedExceptionsMessageRegExp = "Body key not found: 'NEW_KEY'")
 	public void testBodySetThrowWhenKeyNotFound() {
@@ -915,11 +966,45 @@ public class TestCoverage {
 	}
 	
 	@Test(expectedExceptions = IllegalArgumentException.class,
-			expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body")
+	        expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body")
 	public void testBodyAddRequiresObjectBody() {
-		Body body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
-				 .getAsJsonObject());
-		body.builder().add("x", 1).end();
+	    Body body = Body.from(JsonParser.parseString(
+	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+	            .getAsJsonObject());
+	    body.builder().add("x", 1).end();
+	}
+	
+	@Test(expectedExceptions = IllegalArgumentException.class,
+	        expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body")
+	public void testBodyAddFailsWhenRawBodyIsNotParsedJson() {
+	    Body body = Body.from(JsonParser.parseString(
+	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"<id>{{USER_ID}}</id>\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+	            .getAsJsonObject());
+	    body.builder().add("id", "42").end();
+	}
+	
+	@Test
+	public void testBodyTryParseJson() {
+	    Body body = Body.from(JsonParser.parseString(
+	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"   \",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+	            .getAsJsonObject());
+
+	    Body resolved = body.builder().resolve(Map.of("USER_ID", "42")).end();
+	    assertEquals(resolved.getRaw(), "   ");
+	    assertEquals(resolved.getParsed(), null);
+
+	    body = new Body("raw", null, "json", null);
+	    resolved = body.builder().resolve(Map.of("USER_ID", "42")).end();
+	    assertEquals(resolved.getRaw(), null);
+	    assertEquals(resolved.getParsed(), null);
+	    
+	    body = Body.from(JsonParser.parseString(
+	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"id\\\":\\\"{{USER_ID}}\\\"}\",\"options\":{\"raw\":{\"language\":\"text\"}}}}")
+	            .getAsJsonObject());
+	    resolved = body.builder().resolve(Map.of("USER_ID", "42")).end();
+	    assertEquals(resolved.getRaw(), "{\"id\":\"42\"}");
+	    assertNotNull(resolved.getParsed());
+	    assertEquals(resolved.getParsed().isJsonObject(), true);
 	}
 	
 	// -------------------------------------------------------------------------

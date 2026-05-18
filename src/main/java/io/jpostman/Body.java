@@ -150,36 +150,63 @@ public class Body {
     /**
      * Creates a JSON-aware builder for this body.
      *
-     * <p>{@code add(...)} and {@code set(...)} mutate only JSON object bodies.
-     * Arrays and primitive JSON values are preserved and can still be resolved,
-     * but cannot receive object-key mutations.</p>
+     * <p>Handlebars does the template replacement. This builder only keeps the
+     * Postman body shape, preserves raw non-JSON templates, and supports simple
+     * top-level JSON object add/set operations.</p>
      */
     public ParamBuilder<Body> builder() {
         final String bodyMode = this.mode;
         final String bodyLang = this.language;
-        final JsonElement[] working = new JsonElement[] { parsed == null ? new JsonObject() : parsed.deepCopy() };
+        final JsonElement[] workingParsed = new JsonElement[] {
+                parsed == null && !"raw".equals(bodyMode) ? new JsonObject()
+                        : parsed == null ? null : parsed.deepCopy()
+        };
+        final String[] workingRaw = new String[] { raw };
 
         return new ParamBuilder<>(
-                (key, value) -> asObjectForMutation(working[0]).add(key, toJsonElement(value)),
                 (key, value) -> {
-                    JsonObject obj = asObjectForMutation(working[0]);
+                    JsonObject obj = asObjectForMutation(workingParsed[0]);
+                    obj.add(key, toJsonElement(value));
+                },
+                (key, value) -> {
+                    JsonObject obj = asObjectForMutation(workingParsed[0]);
                     if (!obj.has(key)) {
                         throw new IllegalArgumentException("Body key not found: '" + key + "'");
                     }
                     obj.add(key, toJsonElement(value));
                 },
-                vars -> working[0] = substituteJson(working[0], vars),
+                vars -> {
+                    if (workingParsed[0] != null) {
+                        workingParsed[0] = substituteJson(workingParsed[0], vars);
+                        workingRaw[0] = workingParsed[0].toString();
+                    } else {
+                        workingRaw[0] = ParamBuilder.substituteVars(workingRaw[0], vars);
+                        workingParsed[0] = tryParseJson(workingRaw[0]);
+                    }
+                },
                 () -> {
-                    JsonElement result = working[0].deepCopy();
-                    return new Body(bodyMode, result.toString(), bodyLang, result);
+                    JsonElement result = workingParsed[0] == null ? null : workingParsed[0].deepCopy();
+                    String resultRaw = result == null ? workingRaw[0] : result.toString();
+                    return new Body(bodyMode, resultRaw, bodyLang, result);
                 });
     }
 
     private static JsonObject asObjectForMutation(JsonElement el) {
-        if (!el.isJsonObject()) {
+        if (el == null || !el.isJsonObject()) {
             throw new IllegalArgumentException("Body builder add/set requires a JSON object body");
         }
         return el.getAsJsonObject();
+    }
+
+    private static JsonElement tryParseJson(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return JsonParser.parseString(raw);
+        } catch (JsonSyntaxException ignored) {
+            return null;
+        }
     }
 
     private static JsonElement substituteJson(JsonElement el, Map<String, String> vars) {

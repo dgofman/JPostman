@@ -1,6 +1,10 @@
 package io.jpostman;
 
 import java.util.Map;
+
+import com.github.jknack.handlebars.EscapingStrategy;
+import com.github.jknack.handlebars.Handlebars;
+import com.github.jknack.handlebars.Template;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -13,6 +17,8 @@ import java.util.function.Consumer;
  * @param <T> the type produced by {@link #end()}
  */
 public class ParamBuilder<T> {
+
+	private static final Handlebars HANDLEBARS = new Handlebars().with(EscapingStrategy.NOOP);
 
 	@FunctionalInterface
 	public interface Builder<T> {
@@ -69,7 +75,8 @@ public class ParamBuilder<T> {
 
 	/**
 	 * Replaces all {@code {{key}}} tokens in {@code value} with entries from
-	 * {@code vars}. Unknown tokens are left unchanged.
+	 * {@code vars} using Handlebars. Unknown tokens use normal Handlebars
+	 * behavior and render as empty strings.
 	 *
 	 * @param value source text; may be {@code null}
 	 * @param vars variable map; may be {@code null}
@@ -79,10 +86,22 @@ public class ParamBuilder<T> {
 		if (value == null || vars == null) {
 			return value;
 		}
-		for (Map.Entry<String, String> e : vars.entrySet()) {
-			value = value.replace("{{" + e.getKey() + "}}", e.getValue());
+		return renderHandlebars(value, vars);
+	}
+
+	private static String renderHandlebars(String value, Map<String, String> vars) {
+		try {
+			Template template = HANDLEBARS.compileInline(value);
+			return template.apply(vars);
+		} catch (Exception ex) {
+			// Keep the old deterministic behavior as a safe fallback if a template
+			// contains syntax Handlebars cannot compile.
+			String resolved = value;
+			for (Map.Entry<String, String> e : vars.entrySet()) {
+				resolved = resolved.replace("{{" + e.getKey() + "}}", e.getValue());
+			}
+			return resolved;
 		}
-		return value;
 	}
 
 	/**
