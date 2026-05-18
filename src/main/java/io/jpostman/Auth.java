@@ -138,12 +138,12 @@ public class Auth {
 		ParamBuilder.Builder<Auth> buildFn = () -> new Auth(authType, new LinkedHashMap<>(params));
 		return new ParamBuilder<Auth>(
 				// ADD
-				(String key, Object value) -> params.put(key, (String) value),
+				(String key, Object value) -> params.put(key, String.valueOf(value)),
 				// SET (Updates an existing key; throws if the key does not exist)
 				(String key, Object value) -> {
 					if (!params.containsKey(key))
 						throw new IllegalArgumentException("Auth key not found: '" + key + "'");
-					params.put(key, (String) value);
+					params.put(key, String.valueOf(value));
 				},
 				// RESOLVE
 				vars -> {

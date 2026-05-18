@@ -87,6 +87,7 @@ public class TestCoverage {
 		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\", \"value\":\"v\",\"enabled\":true}]}").getAsJsonObject());
 		assertEquals(env.getParams().size(), 1);		
 		assertEquals(env.getParam("apikey").isEnabled(), true);
+		assertEquals(env.getParam("apikey").getValue(), "v");
 		env.getParam("apikey").setEnabled(false);
 		assertEquals(env.getParams().size(), 0);
 		assertEquals(env.get("unknown"), null);
@@ -673,7 +674,7 @@ public class TestCoverage {
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class,
-			expectedExceptionsMessageRegExp = "Url key not found: 'NEW_KEY'")
+			expectedExceptionsMessageRegExp = "URL query parameter not found: 'NEW_KEY'")
 	public void testUrlSetThrowWhenKeyNotFound() throws Exception {
 		Collection col = Collection.load(JsonParser.parseString(
 				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
@@ -799,8 +800,8 @@ public class TestCoverage {
 		body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"graphql\",\"graphql\":{\"query\":\"{ hero }\"}}}")
 				.getAsJsonObject());
-		assertEquals(body.builder().end().getRaw(), "{}");
-		assertEquals(body.toString(), "[graphql]");
+		assertEquals(body.builder().end().getRaw(), "{\"query\":\"{ hero }\"}");
+		assertEquals(body.toString(), "[graphql] {\"query\":\"{ hero }\"}");
 
 		// raw/json: valid JSON array → parsed as JsonArray and builder preserves array body
 		body = Body.from(JsonParser.parseString(
@@ -947,9 +948,23 @@ public class TestCoverage {
 				.end();
 		assertEquals(resolved.getRaw(),
 				"{\"id\":\"007\",\"role\":\"admin\",\"traceId\":\"abc-123\"}");
+		
+		body = Body.from(JsonParser.parseString(
+	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\"}\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+	            .getAsJsonObject());
+	    resolved = body.builder().map("username", "emmy", (Object[]) null);
+	    assertEquals(resolved.getRaw(), "{\"username\":\"emmy\"}");
 	}
+	
+	@Test(expectedExceptions = IllegalArgumentException.class,
+	        expectedExceptionsMessageRegExp = "Key must be String. Found: 123")
+	public void testPartLevelMapAliasRejectsNonStringRestKey() {
+	    Body body = Body.from(JsonParser.parseString(
+	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\"}\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+	            .getAsJsonObject());
 
-
+	    body.builder().map("username", "emmy", 123, "bad");
+	}
 
 	@Test
 	public void testPartLevelEndParamsResolveBeforeBuildEnv() throws Exception {
@@ -1011,6 +1026,56 @@ public class TestCoverage {
 		assertEquals(unchanged.getRaw(), "{\"username\":\"{{username}}\",\"password\":\"{{password}}\"}");
 	}
 	
+
+
+	@Test
+	public void testPartLevelMapAliasSupportsPrimitiveBodyValues() throws Exception {
+		Collection col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"Primitive Body\",\"request\":{\"method\":\"POST\"," 
+						+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\",\\\"single\\\":\\\"{{single}}\\\"," + 
+						"\\\"age\\\": \\\"{{AGE_1}}\\\",\\\"note\\\":\\\"age={{AGE_2}}\\\"}\"," 
+						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}" )
+				.getAsJsonObject());
+
+		Request req = col.getRequest("Primitive Body").builder()
+				.body()
+					.set("username", "{{username}}")
+					.set("age", "{{age}}")
+					.set("single", "{{single}}")
+				.map("username", "emmy", "single", true, "age", 25, "AGE_2", 10)
+				.build();
+
+		assertEquals(req.getBody().getRaw(), "{\"username\":\"emmy\",\"single\":\"true\",\"age\":\"25\",\"note\":\"age=10\"}");
+	}
+
+	@Test
+	public void testPartLevelJsonAliasSupportsRawJsonTemplateValues() throws Exception {
+		Collection col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"Raw Json Template\",\"request\":{\"method\":\"POST\"," 
+						+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":{{username}},\\\"age\\\":{{age}},\\\"single\\\":{{single}}}\"," 
+						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}" )
+				.getAsJsonObject());
+
+		Request req = col.getRequest("Raw Json Template").builder()
+				.body()
+				.json("username", "emmy", "age", 25, "single", true)
+				.build();
+
+		assertEquals(req.getBody().getRaw(), "{\"username\":\"emmy\",\"age\":25,\"single\":true}");
+		assertNotNull(req.getBody().getParsed());
+		assertEquals(req.getBody().getParsed().isJsonObject(), true);
+	}
+
+	@Test(expectedExceptions = IllegalArgumentException.class,
+			expectedExceptionsMessageRegExp = "Key/value arguments must be pairs.")
+	public void testPartLevelMapAliasRejectsOddKeyValuePairs() {
+		Body body = Body.from(JsonParser.parseString(
+				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\"}\","
+						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+				.getAsJsonObject());
+		body.builder().map("username", "emmy", "age");
+	}
+
 	@Test
 	public void testBodyTryParseJson() {
 	    Body body = Body.from(JsonParser.parseString(
@@ -1021,7 +1086,7 @@ public class TestCoverage {
 	    assertEquals(resolved.getRaw(), "   ");
 	    assertEquals(resolved.getParsed(), null);
 
-	    body = new Body("raw", null, "json", null);
+	    body = new Body("raw", null, "json");
 	    resolved = body.builder().resolve(Map.of("USER_ID", "42")).end();
 	    assertEquals(resolved.getRaw(), null);
 	    assertEquals(resolved.getParsed(), null);
@@ -1047,15 +1112,27 @@ public class TestCoverage {
 						+ TEST_USERNAME + "\"}");
 
 		// body builder: set missing key on original body → throws
-		template.getBody().builder().set("NEW_KEY", TEST_USERNAME);
+		template.getBody().builder().set("NEW_KEY", TEST_USERNAME).end();
 	}
 	
 	@Test(expectedExceptions = IllegalArgumentException.class,
-			expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body")
+			expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body: \\[1,2,3\\]")
 	public void testBodyAddRequiresObjectBody() {
 		Body body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
 				 .getAsJsonObject());
 		body.builder().add("x", 1).end();
+	}
+	
+	@Test(expectedExceptions = IllegalArgumentException.class,
+	        expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body: <id>42</id>")
+	public void testBodyAddRequiresObjectBodyWhenRawTemplateIsNotJson() {
+	    Body body = Body.from(JsonParser.parseString(
+	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"<id>{{USER_ID}}</id>\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+	            .getAsJsonObject());
+	    body.builder()
+	            .add("age", 21)
+	            .resolve(Map.of("USER_ID", "42"))
+	            .end();
 	}
 	
 	// -------------------------------------------------------------------------
@@ -1222,27 +1299,6 @@ public class TestCoverage {
 		        .getAsJsonObject());
 		req = col.getRequest("Unnamed");
 		assertEquals(req.getDescription(), "");
-	}
-
-
-
-	@Test(expectedExceptions = IllegalArgumentException.class,
-			expectedExceptionsMessageRegExp = "Body key not found: 'NEW_KEY'")
-	public void testRequestThrowWhenKeyNotFound() throws Exception {
-		Collection col = Collection.load(JsonParser.parseString(
-				"{\"item\":[{\"name\":\"" + PRODUCT_FOLDER + "\",\"item\":["
-						+ "{\"request\":{\"body\":{}}"
-						+ "}]}]}")
-				.getAsJsonObject());
-
-		Request template = col.getFolder(PRODUCT_FOLDER).getRequest("Unnamed");
-
-		// request builder: body add creates new key on cloned request
-		Request req = template.builder().body().add("NEW_KEY", TEST_USERNAME).end().build();
-		assertEquals(req.getBody().toString(), "[none] {\"NEW_KEY\":\"" + TEST_USERNAME + "\"}");
-
-		// request builder: body set missing key → throws
-		template.builder().body().set("NEW_KEY", TEST_USERNAME);
 	}
 	
 	private Request request(String method) throws IOException {

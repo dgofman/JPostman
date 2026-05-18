@@ -10,152 +10,70 @@
 
 <a href="https://repo1.maven.org/maven2/io/github/dgofman/jpostman/"><img src="logo.png" width="100"></a>
 
-**JPostman** is a small Java helper library that lets you reuse exported **Postman collections** and **Postman environments** directly in Java tests.
+**JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java and Rest Assured API tests.
 
-Instead of copying request URLs, headers, authentication, URL query parameters, auth configuration, and request bodies from Postman into Java code, you keep Postman as the single source of truth. Export the collection and environment, load them in Java, optionally override only the values that are different for a test, and execute the request with Rest Assured.
-
----
-
-## Why JPostman?
-
-When API tests are written manually, the same request details often exist in two places:
-
-1. Postman collection
-2. Java test code
-
-That creates duplication and maintenance problems.
-
-If a header, body, URL, token, query parameter, or auth configuration changes in Postman, you also need to remember to update Java tests. JPostman reduces that duplication by letting Java tests load the same exported Postman resources.
-
-With JPostman:
-
-- Keep request definitions in Postman.
-- Export the Postman collection and environment.
-- Load them from Java.
-- Build requests using environment values.
-- Override only what is different for the test.
-- Execute with Rest Assured.
-- Resolve Postman-style `{{variable}}` templates in URLs, headers, auth, and bodies.
-
-This is especially useful when Postman is already used by developers, QA, or API teams.
-
----
-
-## Exporting From Postman
-
-JPostman works with exported Postman collections and environments.
-
-### Export Collection
-
-In Postman, right-click your collection and export it:
-
-![Postman collection export](collections.png)
-
-### Export Environment
-
-Export your environment the same way:
-
-![Postman environment export](environments.png)
-
-Place the exported files under project resources, for example:
-
-```text
-src/main/resources/DummyJSON.postman_collection.json
-src/main/resources/DummyJSON.postman_environment.json
-```
+Instead of copying request URLs, headers, authentication, query parameters, and request bodies into Java code, JPostman keeps Postman as the source of truth. Export the collection and environment, load them in Java, override only what your test needs, resolve Postman-style templates, and execute the final request with Rest Assured.
 
 ---
 
 ## Installation
 
-Add JPostman to your Maven project:
-
 ```xml
 <dependency>
     <groupId>io.github.dgofman</groupId>
     <artifactId>jpostman</artifactId>
-    <version>1.3.0</version>  <!-- replace with latest Maven Central version -->
+    <version>1.3.1</version> <!-- replace with latest Maven Central version -->
 </dependency>
 ```
 
-Use the latest version available from Maven Central if a newer release exists.
+---
 
+## Why JPostman?
+
+JPostman helps when API details are already maintained in Postman but tests are written in Java.
+
+With JPostman you can:
+
+- Load exported Postman collections and environments.
+- Resolve `{{variable}}` templates from environments or local request-part values.
+- Override URL query parameters, headers, auth, and JSON body fields fluently.
+- Reuse Postman request definitions in Rest Assured tests.
+- Avoid duplicating request configuration across Postman and Java.
+
+---
+
+## Exporting From Postman
+
+Export your Postman collection and environment, then place them under project resources:
+
+```text
+src/main/resources/DummyJSON.postman_collection.json
+src/main/resources/DummyJSON.postman_environment.json
+```
+### Export Collection
+![Postman collection export](collections.png)
+
+### Export Environment
+![Postman environment export](environments.png)
 ---
 
 ## Supported Request Parts
 
 JPostman parses and applies common Postman request components:
 
-- Collection folders
-- Requests
-- URLs
-- URL query parameters
+- Collection folders and requests
+- URLs and URL query parameters
 - Headers
 - Auth parameters
 - Raw JSON bodies
 - Raw text/XML/template bodies
-- Form-data and URL-encoded body payloads as exported by Postman
+- Postman form-data and URL-encoded body payloads
 - Environment variables
-- Variable replacement such as `{{base_url}}`, `{{username}}`, `{{password}}`, and `{{accessToken}}`
-
----
-
-## Template Replacement
-
-JPostman uses Handlebars-style template replacement for Postman variables.
-
-Example Postman value:
-
-```text
-{{base_url}}/auth/login
-```
-
-Environment value:
-
-```java
-Environment env = new Environment("Local")
-        .builder()
-        .add("base_url", "https://dummyjson.com")
-        .end();
-```
-
-Resolved result:
-
-```text
-https://dummyjson.com/auth/login
-```
-
-Template replacement is applied when you build a request with an environment:
-
-```java
-Request req = template.builder().build(env);
-```
-
-### Unknown Variables
-
-If a template variable is not present in the environment, Handlebars renders it as an empty value.
-
-Example:
-
-```java
-String result = ParamBuilder.substituteVars(
-        "<id>{{UNKNOWN_ID}}</id>",
-        Map.of("USER_ID", "42"));
-```
-
-Result:
-
-```xml
-<id></id>
-```
-
-This is normal Handlebars behavior.
+- Postman-style template replacement such as `{{base_url}}`, `{{username}}`, `{{password}}`, and `{{accessToken}}`
 
 ---
 
 ## Basic Usage
-
-Load a collection and environment:
 
 ```java
 Collection col = Collection.load(
@@ -165,32 +83,18 @@ Collection col = Collection.load(
 Environment env = Environment.load(
         TestRestAssured.class.getClassLoader()
                 .getResourceAsStream("DummyJSON.postman_environment.json"));
-```
 
-Get a request template from the collection:
-
-```java
 Request template = col.getRequest("Login user and get tokens");
-```
-
-Build a resolved request using the environment:
-
-```java
 Request req = template.builder().build(env);
-```
 
-Execute it with Rest Assured:
-
-```java
-Response response = req.apply(given())
-        .post(req.getUrl())
+Response response = req.execute(given())
         .then()
-        .log().ifValidationFails()
         .statusCode(200)
-        .body("accessToken", notNullValue())
         .extract()
         .response();
 ```
+
+`build(env)` resolves remaining `{{variable}}` templates using the supplied environment.
 
 ---
 
@@ -198,32 +102,24 @@ Response response = req.apply(given())
 
 JPostman separates **request configuration** from **request execution**.
 
-### Apply Request Configuration
+Use `apply(...)` when you want to customize Rest Assured execution yourself:
 
 ```java
 req.apply(given())
-```
-
-This applies the parsed Postman configuration to a Rest Assured request specification. It is useful when additional Rest Assured customization is needed:
-
-```java
-req.apply(given())
-        .auth().oauth2(token)
         .log().all()
         .when()
-        .get(req.getUrl());
+        .post(req.getUrl());
 ```
 
-### Configure and Execute
+Use `execute(...)` when you want JPostman to apply the request configuration and execute the HTTP method from the Postman request:
 
 ```java
-req.execute(given())
+Response response = req.execute(given())
+        .then()
+        .statusCode(200)
+        .extract()
+        .response();
 ```
-
-This automatically:
-
-1. applies request configuration
-2. executes the HTTP method defined in the Postman collection
 
 Supported methods:
 
@@ -235,23 +131,11 @@ Supported methods:
 - HEAD
 - OPTIONS
 
-Example:
-
-```java
-Response response = req.execute(given())
-        .then()
-        .statusCode(200)
-        .extract()
-        .response();
-```
-
 ---
 
 ## Fluent Request Overrides
 
-You can override values from Postman without rewriting the whole request.
-
-The builder API is intended to be consistent across request parts:
+You can override only the values needed for a test:
 
 ```java
 Request req = template.builder()
@@ -262,45 +146,13 @@ Request req = template.builder()
         .build(env);
 ```
 
----
-
-## Part-Level Template Resolution
-
-You can resolve templates for only one request part by passing a local variable map to `.end(...)`.
-
-Part-level resolution has higher priority than the final `build(env)` resolution because the local value replaces the `{{KEY}}` token first. After the token is gone, `build(env)` cannot override it.
-
-Example:
-
-```java
-Request req = template.builder()
-        .url()
-            .set("text", "{{text}}")
-        .end(Map.of("text", "local-text"))
-        .body()
-            .set("username", "{{username}}")
-        .end(Map.of("username", "local-user"))
-        .build(env);
-```
-
-If `env` also contains `text` or `username`, the local values win for those fields. Part-level `.end(params)` resolves only the keys present in `params`; other `{{KEY}}` tokens stay unchanged so they can still be resolved later by `build(env)`.
-
-This works for all request part builders:
-
-```java
-.url().end(localParams)
-.headers().end(localParams)
-.auth().end(localParams)
-.body().end(localParams)
-```
-
-Use this when one request part needs test-specific values but the rest of the request should still be resolved from the shared environment.
+Use `add(...)` to create or overwrite a value. Use `set(...)` when the key must already exist in the Postman export.
 
 ---
 
-## Update URL Query Parameters
+## URL Query Parameters
 
-Query parameters are updated through the URL builder.
+Query parameters are updated through the URL builder:
 
 ```java
 Request req = template.builder()
@@ -308,7 +160,7 @@ Request req = template.builder()
         .build(env);
 ```
 
-Alternative nested style:
+Nested style is also supported:
 
 ```java
 Request req = template.builder()
@@ -318,45 +170,13 @@ Request req = template.builder()
         .build(env);
 ```
 
-Use `url(...)`, not `queries(...)`.
-
-The URL builder controls both the base URL template and query parameter values. For example, a Postman URL like this:
-
-```text
-{{base_url}}/image/400x200?text=JPostman
-```
-
-can be changed to:
-
-```java
-Request req = template.builder()
-        .url(u -> u.set("text", "Hello World"))
-        .build(env);
-```
+Use `url().add(...)` to create a new query parameter and `url().set(...)` to update an existing one.
 
 ---
 
-## Update Headers
+## Headers and Auth
 
-Use `headers(...)` to add or update request headers.
-
-```java
-Request req = template.builder()
-        .headers(h -> h.add("X-Test", "123"))
-        .build(env);
-```
-
-Nested style:
-
-```java
-Request req = template.builder()
-        .headers()
-            .add("X-Test", "123")
-        .end()
-        .build(env);
-```
-
-Use `add(...)` when you want to create or overwrite a header. Use `set(...)` when the header must already exist in the Postman request.
+Headers:
 
 ```java
 Request req = template.builder()
@@ -364,11 +184,7 @@ Request req = template.builder()
         .build(env);
 ```
 
----
-
-## Update Auth Parameters
-
-Use `auth(...)` to override parsed Postman auth parameters.
+Auth:
 
 ```java
 Request req = template.builder()
@@ -376,21 +192,15 @@ Request req = template.builder()
         .build(env);
 ```
 
-This is useful when the collection contains auth like:
-
-```text
-Bearer {{accessToken}}
-```
-
-and a test needs to override or inject a token.
-
 ---
 
-## Update JSON Body Fields
+## Body Handling
 
-Use `body(...)` to update **top-level fields in a valid JSON object body**.
+### JSON Body Field Mutation
 
-Example Postman raw JSON body:
+Use `body().set(...)` and `body().add(...)` for top-level JSON object fields.
+
+Postman raw JSON body:
 
 ```json
 {
@@ -399,56 +209,76 @@ Example Postman raw JSON body:
 }
 ```
 
-Override one JSON field:
+Builder:
 
 ```java
 Request req = template.builder()
-        .body(b -> b.set("username", "emilys"))
+        .body()
+            .set("username", "emilys")
+            .add("age", 21)
         .build(env);
 ```
 
-Resulting body:
+Final body:
 
 ```json
 {
     "username": "emilys",
-    "password": "resolved-from-environment"
+    "password": "resolved-from-environment",
+    "age": 21
 }
 ```
 
-Important rule:
+### Deferred JSON Body Mutation
 
-```text
-body(b -> b.set("username", "emilys"))
+JPostman can queue `body().set(...)` and `body().add(...)` when the raw body is not valid JSON yet because of an unquoted template token.
+
+Postman raw body:
+
+```json
+{
+    "username": {{TOKEN}},
+    "password": "{{password}}"
+}
 ```
 
-means **set the JSON object field named `username`**.
+Builder:
 
-It does **not** mean “replace the template variable `{{username}}` everywhere.”
+```java
+Request req = template.builder()
+        .body()
+            .set("password", "emilyspass")
+            .add("age", 21)
+            .json("TOKEN", "emilys")
+        .build();
+```
 
----
+Final body:
 
-## Raw Text/XML Body Templates
+```json
+{
+    "username": "emilys",
+    "password": "emilyspass",
+    "age": 21
+}
+```
 
-For raw text or XML bodies, use environment/template resolution instead of `body().set(...)`.
+If the body never becomes a JSON object, `add(...)` or `set(...)` throws an error explaining that a JSON object body is required.
 
-Example Postman raw body:
+### Raw Text/XML Body Templates
+
+For raw text or XML bodies, use template resolution instead of JSON field mutation.
 
 ```xml
 <id>{{USER_ID}}</id>
 ```
 
-Correct usage:
-
 ```java
-Collection col = Collection.load(...);
-
 Environment env = new Environment("Test Env")
         .builder()
         .add("USER_ID", "42")
         .end();
 
-Request template = col.getRequest("Unnamed");
 Request req = template.builder().build(env);
 ```
 
@@ -458,95 +288,148 @@ Resolved body:
 <id>42</id>
 ```
 
-Do not use this for raw XML/text bodies:
-
-```java
-Request req = template.builder()
-        .body(b -> b.set("USER_ID", "42"))
-        .build();
-```
-
-That tries to update a JSON object field named `USER_ID`. It will fail if the body is not a JSON object.
+`body().set(...)` means “update a JSON object field,” not “replace any template variable.”
 
 ---
 
-## Body Builder Rules
+## Local Template Values with `map(...)` and `json(...)`
 
-The body builder supports two different concepts:
+Local request-part values are resolved before `build(env)`, so they have higher priority than environment values. Tokens that are not provided locally remain available for final environment resolution.
 
-### 1. Template Resolution
+### `map(...)`
 
-Template resolution replaces `{{KEY}}` values using the environment.
-
-```java
-Request req = template.builder().build(env);
-```
-
-This works for:
-
-- JSON bodies
-- raw text bodies
-- XML bodies
-- URL values
-- headers
-- auth values
-
-### 2. JSON Object Mutation
-
-JSON object mutation changes fields in a parsed JSON object body.
+Use `map(...)` for normal template replacement.
 
 ```java
 Request req = template.builder()
-        .body(b -> b.set("username", "emilys"))
+        .url()
+            .set("q", "find")
+            .map("TOKEN", "login")
         .build(env);
 ```
 
-This requires the raw body to be valid JSON object text.
+Result:
 
-Valid:
+```text
+{{TOKEN}} -> login
+```
+
+For JSON bodies, use `map(...)` when the placeholder is already inside quotes:
 
 ```json
 {
-    "username": "{{username}}"
+    "age": "{{age}}"
 }
 ```
 
-Not valid for `body().set(...)`:
-
-```xml
-<id>{{USER_ID}}</id>
+```java
+Request req = template.builder()
+        .body()
+            .map("age", 25)
+        .build();
 ```
 
-Not valid for `body().set(...)`:
+Final body:
 
 ```json
-[
-    "{{username}}",
-    "{{password}}"
-]
+{
+    "age": "25"
+}
 ```
 
-For non-object bodies, use environment values and call `build(env)`.
+### `json(...)`
 
----
+Use `json(...)` when a raw JSON body has unquoted template placeholders and string values must become JSON-safe strings.
 
-## Add New Body Fields
+Raw body:
 
-For JSON object bodies, you can add new top-level fields:
+```json
+{
+    "username": {{username}},
+    "age": {{age}},
+    "single": {{single}}
+}
+```
+
+Builder:
 
 ```java
 Request req = template.builder()
-        .body(b -> b.add("traceId", "abc-123"))
-        .build(env);
+        .body()
+            .json("username", "emmy", "age", 25, "single", true)
+        .build();
 ```
 
-Example result:
+Final body:
+
+```json
+{
+    "username": "emmy",
+    "age": 25,
+    "single": true
+}
+```
+
+Rule of thumb:
+
+```json
+"username": "{{username}}"
+```
+
+Use `map(...)`.
+
+```json
+"username": {{username}}
+```
+
+Use `json(...)`.
+
+---
+
+## Advanced Login Example
+
+This example demonstrates URL overrides, local token resolution, auth override, deferred JSON body mutation, JSON-stringified token replacement, and final environment resolution.
+
+```java
+// Get login request template from exported Postman collection.
+Request template = col.getRequest("Login user test request");
+assertNotNull(template, "Request template not found");
+
+// Build executable request by resolving {{variables}} from environment.
+Request req = template.builder()
+        .url() // starts from: {{base_url}}/auth/{{TOKEN}}?q={{TOKEN}}
+            .set("q", "find") // updates query parameter: q={{TOKEN}} -> q=find
+            .map("TOKEN", "login") // resolves URL path token locally: /auth/{{TOKEN}} -> /auth/login
+        .auth(c -> c
+            .set("token", "UNKNOWN")) // overrides bearer token value: token={{TOKEN}} -> token=UNKNOWN
+        .body()
+            .set("password", env.get("password")) // updates JSON field: "password":"{{password}}" -> "password":"emilyspass"
+            .add("age", 21) // adds JSON field: "age":21
+            .json("TOKEN", env.get("username")) // JSON-stringifies local token: {{TOKEN}} -> "emilys"
+        .build(env); // resolves remaining environment tokens, for example {{base_url}}
+
+// Show template before resolution and final request after resolution.
+log.debug("REQUEST BEFORE: " + template.toString());
+log.debug("REQUEST AFTER:  " + req.toString());
+req.print();
+```
+
+Example Postman raw body for this pattern:
+
+```json
+{
+    "username": {{TOKEN}},
+    "password": "{{password}}"
+}
+```
+
+Example final body:
 
 ```json
 {
     "username": "emilys",
-    "password": "resolved-from-environment",
-    "traceId": "abc-123"
+    "password": "emilyspass",
+    "age": 21
 }
 ```
 
@@ -554,13 +437,9 @@ Example result:
 
 ## Environment Overrides
 
-You can create or modify environments in Java.
+You can create or modify environments in Java:
 
 ```java
-Environment env = Environment.load(
-        TestRestAssured.class.getClassLoader()
-                .getResourceAsStream("DummyJSON.postman_environment.json"));
-
 Environment testEnv = env.builder()
         .set("username", "emilys")
         .set("password", "emilyspass")
@@ -570,90 +449,73 @@ Environment testEnv = env.builder()
 Request req = template.builder().build(testEnv);
 ```
 
-Use environment values when you want template replacement:
-
-```java
-{{username}}
-{{password}}
-{{USER_ID}}
-```
-
-Use builder `set(...)` on request parts when you want to mutate a known parsed field or parameter.
+Use environment values for request-wide template replacement. Use part-level `map(...)` or `json(...)` when only one request part should receive a local value before final environment resolution.
 
 ---
 
-## `add(...)` vs `set(...)`
+## Troubleshooting
 
-The fluent builders use two similar methods:
+### `Body builder add/set requires a JSON object body`
 
-### `add(...)`
+This means `body().add(...)` or `body().set(...)` was used on a body that did not become a JSON object.
 
-Adds a new value or overwrites an existing value.
+Valid for body mutation:
 
-```java
-.headers(h -> h.add("X-Test", "123"))
-.body(b -> b.add("traceId", "abc-123"))
+```json
+{
+    "username": "{{username}}"
+}
 ```
 
-### `set(...)`
+Also valid after `json(...)` resolution:
 
-Updates an existing value and may fail if the key is missing.
-
-```java
-.headers(h -> h.set("Content-Type", "application/json"))
-.body(b -> b.set("username", "emilys"))
-.auth(a -> a.set("token", "my-token"))
-.url(u -> u.set("text", "Hello World"))
+```json
+{
+    "username": {{username}}
+}
 ```
 
-Use `set(...)` when the value should already exist in the Postman export. This helps catch accidental typos.
+Not valid for body mutation:
 
----
+```xml
+<id>{{USER_ID}}</id>
+```
 
-## Full Example
+For XML/text, use environment or part-level template resolution, not JSON body mutation.
+
+### `Body key not found: 'KEY'`
+
+This means `body().set("KEY", value)` was used, but the resolved JSON body did not contain that field. Use `add(...)` if you want to create a new field.
+
+### `URL query parameter not found: 'KEY'`
+
+This means `url().set("KEY", value)` was used, but the query parameter does not exist in the Postman URL/query list. Use `url().add(...)` if you want to create a new query parameter.
+
+### Unknown template variables become empty
+
+If a template variable is missing from the supplied map/environment, Handlebars renders it as an empty value:
 
 ```java
-Collection col = Collection.load(
-        TestRestAssured.class.getClassLoader()
-                .getResourceAsStream("DummyJSON.postman_collection.json"));
+ParamBuilder.substituteVars("<id>{{UNKNOWN_ID}}</id>", Map.of("USER_ID", "42"));
+```
 
-Environment env = Environment.load(
-        TestRestAssured.class.getClassLoader()
-                .getResourceAsStream("DummyJSON.postman_environment.json"));
+Result:
 
-Request template = col.getRequest("Login user and get tokens");
-
-Environment testEnv = env.builder()
-        .set("username", "emilys")
-        .set("password", "emilyspass")
-        .end();
-
-Request req = template.builder()
-        .headers(h -> h.set("Content-Type", "application/json"))
-        .body(b -> b.set("username", "emilys"))
-        .build(testEnv);
-
-Response response = req.execute(given())
-        .then()
-        .statusCode(200)
-        .body("accessToken", notNullValue())
-        .extract()
-        .response();
+```xml
+<id></id>
 ```
 
 ---
 
 ## Summary
 
-JPostman makes Java API tests easier to maintain when Postman requests change.
-
 Recommended usage:
 
 - Keep request definitions in Postman.
-- Use environments for `{{KEY}}` template replacement.
+- Use `build(env)` for request-wide `{{KEY}}` resolution.
 - Use `.url(...)` for URL/query overrides.
 - Use `.headers(...)` for headers.
 - Use `.auth(...)` for auth values.
-- Use `.body(...)` only for valid JSON object body fields.
-- Use `.end(params)` for part-level template resolution when local values should win.
-- Use `build(env)` to resolve remaining templates across the request.
+- Use `.body(...)` for JSON body field mutation.
+- Use `.map(...)` for normal local token replacement.
+- Use `.json(...)` for unquoted raw JSON placeholders that need JSON-safe string values.

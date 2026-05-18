@@ -50,6 +50,47 @@ public class TestRestAssured {
 	// -------------------------------------------------------------------------
 	// Rest Assured API tests
 	// -------------------------------------------------------------------------
+	
+	@Test
+	public void testRestAssuredTestLogin() {
+		assertNotNull(env, "Environment not loaded");
+
+		// Get login request template from exported Postman collection.
+		Request template = col.getRequest("Login user test request");
+		assertNotNull(template, "Request template not found");
+		
+		// Build executable request by resolving {{variables}} from environment.
+		Request req = template.builder()
+		        .url() // starts from: {{base_url}}/auth/{{TOKEN}}?q={{TOKEN}}
+		            .set("q", "find") // updates query parameter: q={{TOKEN}} -> q=find
+		            .map("TOKEN", "login") // resolves URL path token locally: /auth/{{TOKEN}} -> /auth/login
+		        .auth(c -> c
+		            .set("token", "UNKNOWN")) // overrides bearer token value: token={{TOKEN}} -> token=UNKNOWN
+		        .body()
+		            .set("password", env.get("password")) // updates JSON field: "password":"{{password}}" -> "password":"emilyspass"
+		            .add("age", 21) // adds JSON field: "age":21
+		            .json("TOKEN", env.get("username")) // JSON-stringifies local token: {{TOKEN}} -> "emilys"
+		        .build(env); // resolves remaining environment tokens, for example {{base_url}}
+
+		// Show template before resolution and final request after resolution.
+		log.debug("REQUEST BEFORE: " + template.toString());
+		log.debug("REQUEST AFTER:  " + req.toString());
+		req.print();
+
+		// Execute login request and validate access token is returned.
+		Response response = req.execute(given())
+				.then()
+				.log().ifValidationFails()
+				.statusCode(200)
+				.body("accessToken", notNullValue())
+				.extract()
+				.response();
+
+		// Store runtime token back into environment for dependent authenticated calls.
+		log.debug("ENV BEFORE:\n" + env.toString());
+		env = env.builder().add(ENV_TOKEN_KEY, response.path("accessToken")).end();
+		log.debug("ENV AFTER:\n" + env.toString());
+	}
 
 	@Test
 	public void testRestAssuredLogin() {

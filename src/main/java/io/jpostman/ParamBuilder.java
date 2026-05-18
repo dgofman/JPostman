@@ -1,5 +1,6 @@
 package io.jpostman;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -7,6 +8,7 @@ import java.util.regex.Pattern;
 import com.github.jknack.handlebars.EscapingStrategy;
 import com.github.jknack.handlebars.Handlebars;
 import com.github.jknack.handlebars.Template;
+import com.google.gson.Gson;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -20,6 +22,7 @@ import java.util.function.Consumer;
  */
 public class ParamBuilder<T> {
 
+	private static final Gson GSON = new Gson();
 	private static final Handlebars HANDLEBARS = new Handlebars().with(EscapingStrategy.NOOP);
 	private static final Pattern HANDLEBARS_TOKEN = Pattern.compile("\\{\\{\\s*([A-Za-z0-9_.-]+)\\s*\\}\\}");
 	private static final ThreadLocal<Boolean> PARTIAL_RESOLVE = ThreadLocal.withInitial(() -> Boolean.FALSE);
@@ -36,13 +39,13 @@ public class ParamBuilder<T> {
 	private final BiConsumer<String, Object> onSet;
 
 	/** Resolves variable placeholders using the supplied environment variables. */
-	private final Consumer<Map<String, String>> onResolve;
+	private final Consumer<Map<String, ?>> onResolve;
 
 	/** Builds the final target object from the builder state. */
 	private final Builder<T> onBuild;
 
 	ParamBuilder(BiConsumer<String, Object> onPut, BiConsumer<String, Object> onSet,
-			Consumer<Map<String, String>> onResolve, Builder<T> onBuild) {
+			Consumer<Map<String, ?>> onResolve, Builder<T> onBuild) {
 		this.onPut = onPut;
 		this.onSet = onSet;
 		this.onResolve = onResolve;
@@ -67,7 +70,7 @@ public class ParamBuilder<T> {
 	}
 
 	/** Substitutes all {@code {{key}}} tokens using the supplied variable map. */
-	public ParamBuilder<T> resolve(Map<String, String> vars) {
+	public ParamBuilder<T> resolve(Map<String, ?> vars) {
 		if (vars != null) {
 			onResolve.accept(vars);
 		}
@@ -91,7 +94,7 @@ public class ParamBuilder<T> {
 	 * @param vars local variables used only for this builder
 	 * @return final object
 	 */
-	public T end(Map<String, String> vars) {
+	public T end(Map<String, ?> vars) {
 		if (vars != null) {
 			PARTIAL_RESOLVE.set(Boolean.TRUE);
 			try {
@@ -103,6 +106,65 @@ public class ParamBuilder<T> {
 		return end();
 	}
 
+
+
+	/**
+	 * Resolves variables using local key/value pairs, then produces the final object.
+	 *
+	 * <p>This is a convenience alias for {@code end(Map.of(...))} without the
+	 * {@code Map.of(...)} wrapper.</p>
+	 *
+	 * @param key first key
+	 * @param value first value
+	 * @param rest remaining alternating key/value pairs
+	 * @return final object
+	 */
+	public T map(String key, Object value, Object... rest) {
+		return end(toMap(false, key, value, rest));
+	}
+
+	/**
+	 * Resolves variables using local key/value pairs where String values are
+	 * JSON-stringified, then produces the final object.
+	 *
+	 * <p>Use this for raw JSON templates that need quoted string values, for
+	 * example {@code {"username":{{username}}}}.</p>
+	 *
+	 * @param key first key
+	 * @param value first value
+	 * @param rest remaining alternating key/value pairs
+	 * @return final object
+	 */
+	public T json(String key, Object value, Object... rest) {
+		return end(toMap(true, key, value, rest));
+	}
+
+	private static Map<String, Object> toMap(boolean stringifyStrings,
+			String key, Object value, Object... rest) {
+		int restLength = rest == null ? 0 : 
+			rest.length;
+		if (restLength % 2 != 0) {
+			throw new IllegalArgumentException("Key/value arguments must be pairs.");
+		}
+
+		Map<String, Object> result = new LinkedHashMap<>();
+		result.put(key, convertValue(value, stringifyStrings));
+
+		for (int i = 0; i < restLength; i += 2) {
+			Object rawKey = rest[i];
+			Object rawValue = rest[i + 1];
+			if (!(rawKey instanceof String)) {
+				throw new IllegalArgumentException("Key must be String. Found: " + rawKey);
+			}
+			result.put((String) rawKey, convertValue(rawValue, stringifyStrings));
+		}
+		return result;
+	}
+
+	private static Object convertValue(Object value, boolean stringifyStrings) {
+		return stringifyStrings && value instanceof String ? GSON.toJson(value) : value;
+	}
+
 	/**
 	 * Replaces all {@code {{key}}} tokens in {@code value} with entries from
 	 * {@code vars} using Handlebars. Unknown tokens use normal Handlebars
@@ -112,7 +174,7 @@ public class ParamBuilder<T> {
 	 * @param vars variable map; may be {@code null}
 	 * @return substituted text, or {@code null} when {@code value} is null
 	 */
-	public static String substituteVars(String value, Map<String, String> vars) {
+	public static String substituteVars(String value, Map<String, ?> vars) {
 		if (value == null || vars == null) {
 			return value;
 		}
@@ -122,7 +184,7 @@ public class ParamBuilder<T> {
 		return renderHandlebars(value, vars);
 	}
 
-	private static String renderProvidedTokensOnly(String value, Map<String, String> vars) {
+	private static String renderProvidedTokensOnly(String value, Map<String, ?> vars) {
 		Matcher matcher = HANDLEBARS_TOKEN.matcher(value);
 		StringBuffer resolved = new StringBuffer();
 		while (matcher.find()) {
@@ -137,7 +199,7 @@ public class ParamBuilder<T> {
 		return resolved.toString();
 	}
 
-	private static String renderHandlebars(String value, Map<String, String> vars) {
+	private static String renderHandlebars(String value, Map<String, ?> vars) {
 		try {
 			Template template = HANDLEBARS.compileInline(value);
 			return template.apply(vars);
@@ -145,8 +207,8 @@ public class ParamBuilder<T> {
 			// Keep the old deterministic behavior as a safe fallback if a template
 			// contains syntax Handlebars cannot compile.
 			String resolved = value;
-			for (Map.Entry<String, String> e : vars.entrySet()) {
-				resolved = resolved.replace("{{" + e.getKey() + "}}", e.getValue());
+			for (Map.Entry<String, ?> e : vars.entrySet()) {
+				resolved = resolved.replace("{{" + e.getKey() + "}}", String.valueOf(e.getValue()));
 			}
 			return resolved;
 		}
@@ -177,6 +239,15 @@ public class ParamBuilder<T> {
 		ParamInfo(String value, boolean enabled) {
 			this.value = value;
 			this.enabled = enabled;
+		}
+		
+		/**
+		 * Returns the raw parameter value.
+		 *
+		 * @return parameter value
+		 */
+		public String getValue() {
+		    return value;
 		}
 		
 		/**

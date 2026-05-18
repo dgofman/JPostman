@@ -207,7 +207,7 @@ public class Url {
 				(key, val) -> {
 					ParamInfo info = params.get(key);
 					if (info == null) {
-						throw new IllegalArgumentException("Url key not found: '" + key + "'");
+						throw new IllegalArgumentException("URL query parameter not found: '" + key + "'");
 					}
 					params.put(key, new ParamInfo(String.valueOf(val), info.enabled));
 				},

@@ -320,19 +320,49 @@ public class Request {
 			}
 
 			/** Adds or replaces a parameter without requiring it to exist first. */
-			public ParamStep add(String key, String value) {
+			public ParamStep add(String key, Object value) {
 				delegate.add(key, value);
 				return this;
 			}
 
 			/** Updates an existing parameter and throws when the key is missing. */
-			public ParamStep set(String key, String value) {
+			public ParamStep set(String key, Object value) {
 				delegate.set(key, value);
 				return this;
 			}
 
 				/** Returns to the parent request builder. */
 			public RequestBuilder end() {
+				return RequestBuilder.this;
+			}
+
+
+
+			/**
+			 * Resolves this request part with local key/value pairs, then returns to the
+			 * parent request builder.
+			 *
+			 * @param key first key
+			 * @param value first value
+			 * @param rest remaining alternating key/value pairs
+			 * @return parent request builder
+			 */
+			public RequestBuilder map(String key, Object value, Object... rest) {
+				delegate.map(key, value, rest);
+				return RequestBuilder.this;
+			}
+
+			/**
+			 * Resolves this request part with local key/value pairs where String values are
+			 * JSON-stringified, then returns to the parent request builder.
+			 *
+			 * @param key first key
+			 * @param value first value
+			 * @param rest remaining alternating key/value pairs
+			 * @return parent request builder
+			 */
+			public RequestBuilder json(String key, Object value, Object... rest) {
+				delegate.json(key, value, rest);
 				return RequestBuilder.this;
 			}
 
@@ -344,7 +374,7 @@ public class Request {
 			 * @param vars local variables used only for this request part
 			 * @return parent request builder
 			 */
-			public RequestBuilder end(Map<String, String> vars) {
+			public RequestBuilder end(Map<String, ?> vars) {
 				delegate.end(vars);
 				return RequestBuilder.this;
 			}

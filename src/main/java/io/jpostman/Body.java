@@ -1,6 +1,7 @@
 package io.jpostman;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -18,10 +19,9 @@ import com.google.gson.JsonSyntaxException;
  * Represents a Postman request body.
  *
  * <p>The class keeps the original body mode ({@code raw}, {@code formdata},
- * {@code urlencoded}, {@code graphql}, or {@code none}), the raw text that can
- * be sent to Rest Assured, and, when possible, a parsed {@link JsonElement}.
- * Parsed JSON is used by the fluent builder so variable substitution works
- * recursively inside JSON objects and arrays.</p>
+ * {@code urlencoded}, {@code graphql}, or {@code none}) and the raw text that
+ * can be sent to Rest Assured. JSON parsing is handled inside the builder when
+ * JSON field mutation is needed.</p>
  */
 public class Body {
 
@@ -32,13 +32,11 @@ public class Body {
     private final String mode;
     private final String raw;
     private final String language;
-    private final JsonElement parsed;
 
-    Body(String mode, String raw, String language, JsonElement parsed) {
+    Body(String mode, String raw, String language) {
         this.mode = mode;
         this.raw = raw;
         this.language = language;
-        this.parsed = parsed;
     }
 
     /**
@@ -49,11 +47,11 @@ public class Body {
      *         null, or not a JSON object
      */
     public static Body from(JsonObject reqObj) {
-        if (reqObj == null || 
-        		!reqObj.has("body") || 
-        		reqObj.get("body").isJsonNull()
+        if (reqObj == null
+                || !reqObj.has("body")
+                || reqObj.get("body").isJsonNull()
                 || !reqObj.get("body").isJsonObject()) {
-            return new Body(NONE, "", "", null);
+            return new Body(NONE, "", "");
         }
 
         JsonObject bodyObj = reqObj.getAsJsonObject("body");
@@ -61,47 +59,26 @@ public class Body {
 
         switch (mode) {
         case "raw":
-            return parseRawBody(bodyObj, mode);
+        	String raw = getString(bodyObj, "raw", "");
+            String language = getLanguage(bodyObj);
+            return new Body(mode, raw, language);
         case "graphql":
-            return parseGraphqlBody(bodyObj, mode);
+        	String graphql = bodyObj.has("graphql") && !bodyObj.get("graphql").isJsonNull()
+		            ? bodyObj.get("graphql").toString()
+		            : "";
+		    return new Body(mode, graphql, "");
         case "formdata":
         case "urlencoded":
-            return parseStructuredBody(bodyObj, mode);
+        	JsonElement payload = bodyObj.has(mode) && !bodyObj.get(mode).isJsonNull()
+		            ? bodyObj.get(mode)
+		            : null;
+		    JsonElement parsed = parseBodyPayload(payload);
+		    return new Body(mode, parsed == null ? "" : parsed.toString(), "");
         default:
-            return new Body(mode, "", "", null);
+            return new Body(mode, "", "");
         }
     }
 
-    private static Body parseRawBody(JsonObject bodyObj, String mode) {
-        String raw = getString(bodyObj, "raw", "");
-        String language = getLanguage(bodyObj);
-        JsonElement parsed = null;
-
-        if (!raw.isBlank() && "json".equals(language)) {
-            try {
-                parsed = JsonParser.parseString(raw);
-            } catch (JsonSyntaxException ignored) {
-                // Keep invalid JSON as raw text so callers can still send it unchanged.
-            }
-        }
-        return new Body(mode, raw, language, parsed);
-    }
-
-    private static Body parseGraphqlBody(JsonObject bodyObj, String mode) {
-        String graphql = bodyObj.has("graphql") && !bodyObj.get("graphql").isJsonNull()
-                ? bodyObj.get("graphql").toString()
-                : "";
-        return new Body(mode, graphql, "", null);
-    }
-
-    private static Body parseStructuredBody(JsonObject bodyObj, String mode) {
-        JsonElement payload = bodyObj.has(mode) && !bodyObj.get(mode).isJsonNull()
-                ? bodyObj.get(mode)
-                : null;
-        JsonElement parsed = parseBodyPayload(payload);
-        String raw = parsed == null ? "" : parsed.toString();
-        return new Body(mode, raw, "", parsed);
-    }
 
     /**
      * Normalizes Postman {@code formdata} and {@code urlencoded} payloads.
@@ -132,9 +109,10 @@ public class Body {
     }
 
     private static String getString(JsonObject obj, String key, String def) {
-    	JsonElement value = obj.get(key);
-        return value != null && !value.isJsonNull() &&
-                value.isJsonPrimitive() ? value.getAsString() : def;
+        JsonElement value = obj.get(key);
+        return value != null && !value.isJsonNull() && value.isJsonPrimitive()
+                ? value.getAsString()
+                : def;
     }
 
     private static String getLanguage(JsonObject bodyObj) {
@@ -148,54 +126,79 @@ public class Body {
     }
 
     /**
-     * Creates a JSON-aware builder for this body.
+     * Creates a builder for this body.
      *
-     * <p>Handlebars does the template replacement. This builder only keeps the
-     * Postman body shape, preserves raw non-JSON templates, and supports simple
-     * top-level JSON object add/set operations.</p>
+     * <p>Template replacement is handled through {@link ParamBuilder}. JSON
+     * parsing is performed only inside the builder, so raw template bodies like
+     * {@code {"username": {{TOKEN}}}} can be resolved first and mutated after
+     * they become valid JSON.</p>
      */
     public ParamBuilder<Body> builder() {
         final String bodyMode = this.mode;
         final String bodyLang = this.language;
-        final JsonElement[] workingParsed = new JsonElement[] {
-                parsed == null && !"raw".equals(bodyMode) ? new JsonObject()
-                        : parsed == null ? null : parsed.deepCopy()
-        };
         final String[] workingRaw = new String[] { raw };
+        final JsonElement[] workingParsed = new JsonElement[] { initialParsed(bodyMode, raw) };
+        final List<BodyMutation> pendingMutations = new ArrayList<>();
 
         return new ParamBuilder<>(
-                (key, value) -> {
-                    JsonObject obj = asObjectForMutation(workingParsed[0]);
-                    obj.add(key, toJsonElement(value));
-                },
-                (key, value) -> {
-                    JsonObject obj = asObjectForMutation(workingParsed[0]);
-                    if (!obj.has(key)) {
-                        throw new IllegalArgumentException("Body key not found: '" + key + "'");
-                    }
-                    obj.add(key, toJsonElement(value));
-                },
-                vars -> {
-                    if (workingParsed[0] != null) {
-                        workingParsed[0] = substituteJson(workingParsed[0], vars);
-                        workingRaw[0] = workingParsed[0].toString();
-                    } else {
-                        workingRaw[0] = ParamBuilder.substituteVars(workingRaw[0], vars);
-                        workingParsed[0] = tryParseJson(workingRaw[0]);
-                    }
-                },
+        		// ADD
+                (key, value) -> pendingMutations.add(new BodyMutation(key, value, true)),
+                // SET
+				(key, value) -> pendingMutations.add(new BodyMutation(key, value, false)),
+				// RESOLVE
+				vars -> {
+				    if (workingParsed[0] != null) {
+				        applyPendingMutations(workingRaw, workingParsed, pendingMutations);
+				        workingParsed[0] = substituteJson(workingParsed[0], vars);
+				    } else {
+				        workingRaw[0] = ParamBuilder.substituteVars(workingRaw[0], vars);
+				        workingParsed[0] = tryParseJson(workingRaw[0]);
+
+				        applyPendingMutations(workingRaw, workingParsed, pendingMutations);
+
+				        if (workingParsed[0] != null) {
+				            workingParsed[0] = substituteJson(workingParsed[0], vars);
+				        }
+				    }
+
+				    if (workingParsed[0] != null) {
+				        workingRaw[0] = workingParsed[0].toString();
+				    }
+				},
+                // BUILD
                 () -> {
+                    applyPendingMutations(workingRaw, workingParsed, pendingMutations);
                     JsonElement result = workingParsed[0] == null ? null : workingParsed[0].deepCopy();
                     String resultRaw = result == null ? workingRaw[0] : result.toString();
-                    return new Body(bodyMode, resultRaw, bodyLang, result);
+                    return new Body(bodyMode, resultRaw, bodyLang);
                 });
     }
 
-    private static JsonObject asObjectForMutation(JsonElement el) {
-        if (!el.isJsonObject()) {
-            throw new IllegalArgumentException("Body builder add/set requires a JSON object body");
+    private static JsonElement initialParsed(String mode, String raw) {
+        JsonElement parsed = tryParseJson(raw);
+        if (parsed == null && !"raw".equals(mode)) {
+            return new JsonObject();
         }
-        return el.getAsJsonObject();
+        return parsed;
+    }
+
+    private static void applyPendingMutations(String[] workingRaw, JsonElement[] workingParsed, List<BodyMutation> pendingMutations) {
+        if (pendingMutations.isEmpty()) {
+            return;
+        }
+        JsonElement parsed = workingParsed[0];
+        if (parsed == null || 
+        		!parsed.isJsonObject()) {
+            throw new IllegalArgumentException("Body builder add/set requires a JSON object body: " + workingRaw[0]);
+        }
+        JsonObject obj = parsed.getAsJsonObject();
+        for (BodyMutation mutation : new ArrayList<>(pendingMutations)) {
+        	if (!mutation.addIfMissing && !obj.has(mutation.key)) {
+                throw new IllegalArgumentException("Body key not found: '" + mutation.key + "'");
+            }
+            obj.add(mutation.key, GSON.toJsonTree(mutation.value));
+        }
+        pendingMutations.clear();
     }
 
     private static JsonElement tryParseJson(String raw) {
@@ -209,7 +212,7 @@ public class Body {
         }
     }
 
-    private static JsonElement substituteJson(JsonElement el, Map<String, String> vars) {
+    private static JsonElement substituteJson(JsonElement el, Map<String, ?> vars) {
         if (el.isJsonNull()) {
             return el;
         }
@@ -233,10 +236,6 @@ public class Body {
         return el;
     }
 
-    private static JsonElement toJsonElement(Object value) {
-        return GSON.toJsonTree(value);
-    }
-
     /** @return Postman body mode, for example {@code raw}, {@code formdata}, or {@code none}. */
     public String getMode() {
         return mode;
@@ -252,9 +251,13 @@ public class Body {
         return language;
     }
 
-    /** @return parsed JSON body when available; otherwise {@code null}. */
+    /**
+     * Lazily parses the current raw body as JSON.
+     *
+     * @return parsed JSON body when the raw body is valid JSON; otherwise {@code null}
+     */
     public JsonElement getParsed() {
-        return parsed;
+        return tryParseJson(raw);
     }
 
     /** @return true when there is no sendable body content. */
@@ -266,20 +269,35 @@ public class Body {
     public void print() {
         log.trace(toDebugString());
     }
-    
+
     /** Returns verbose diagnostic representation including details. */
-	public String toDebugString() {
-	    return toString();
-	}
+    public String toDebugString() {
+        return toString();
+    }
 
     @Override
     public String toString() {
         if ("raw".equals(mode)) {
             return "[" + mode + (language.isEmpty() ? "" : "/" + language) + "] " + raw;
         }
+
+        JsonElement parsed = getParsed();
         if (parsed != null) {
             return "[" + mode + "] " + parsed;
         }
         return "[" + mode + "]";
+    }
+    
+    /** Queues a body field mutation until the body can be parsed as a JSON object. */
+    private static final class BodyMutation {
+        private final String key;
+        private final Object value;
+        private final boolean addIfMissing;
+
+        private BodyMutation(String key, Object value, boolean addIfMissing) {
+            this.key = key;
+            this.value = value;
+            this.addIfMissing = addIfMissing;
+        }
     }
 }

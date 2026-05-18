@@ -95,8 +95,8 @@ public class Environment {
 					params.put(key, new ParamInfo(String.valueOf(value), info.enabled));
 				},
 				// RESOLVE
-				vars -> vars.forEach((String key, String value) ->
-						params.put(key, new ParamInfo(value, true))),
+				vars -> vars.forEach((key, value) ->
+						params.put(key, new ParamInfo(String.valueOf(value), true))),
 				// BUILD
 				buildFn);
 	}
