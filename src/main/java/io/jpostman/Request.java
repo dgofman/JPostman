@@ -331,8 +331,21 @@ public class Request {
 				return this;
 			}
 
-			/** Returns to the parent request builder. */
+				/** Returns to the parent request builder. */
 			public RequestBuilder end() {
+				return RequestBuilder.this;
+			}
+
+			/**
+			 * Resolves this request part with local variables, then returns to the parent
+			 * request builder. Values resolved here take priority over later
+			 * request-level resolution from {@code build(env)}.
+			 *
+			 * @param vars local variables used only for this request part
+			 * @return parent request builder
+			 */
+			public RequestBuilder end(Map<String, String> vars) {
+				delegate.end(vars);
 				return RequestBuilder.this;
 			}
 		}

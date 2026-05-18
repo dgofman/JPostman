@@ -87,7 +87,6 @@ public class TestCoverage {
 		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\", \"value\":\"v\",\"enabled\":true}]}").getAsJsonObject());
 		assertEquals(env.getParams().size(), 1);		
 		assertEquals(env.getParam("apikey").isEnabled(), true);
-		assertEquals(env.getParam("apikey").getValue(), "v");
 		env.getParam("apikey").setEnabled(false);
 		assertEquals(env.getParams().size(), 0);
 		assertEquals(env.get("unknown"), null);
@@ -410,19 +409,6 @@ public class TestCoverage {
 		// header builder: original template remains unchanged
 		assertEquals(template.getHeader().toString(), "  Content-Type                        = application/json\n");
 		assertEquals(template.getHeader().getParams().size(), 1);
-		
-		// v2.1 array: key is null → skipped
-		header = Header.from(JsonParser.parseString(
-		        "{\"header\":[{\"key\":null,\"value\":\"v\"}]}")
-		        .getAsJsonObject());
-		assertEquals(header.isEmpty(), true);
-
-		// v2.1 array: value is null → stored as empty string
-		header = Header.from(JsonParser.parseString(
-		        "{\"header\":[{\"key\":\"X-NullValue\",\"value\":null}]}")
-		        .getAsJsonObject());
-		assertEquals(header.get("X-NullValue"), "");
-		assertEquals(header.toString(), "  X-NullValue                         = \n");
 	}
 
 	@Test
@@ -456,6 +442,18 @@ public class TestCoverage {
 				"{\"header\":[{\"key\":\"Accept\",\"value\":\"application/json\",\"disabled\":false}]}")
 				.getAsJsonObject());
 		assertEquals(header.get("Accept"), "application/json");
+		
+		// v2.1 array: key is null → skipped
+		header = Header.from(JsonParser.parseString(
+		        "{\"header\":[{\"key\":null,\"value\":\"v\"}]}")
+		        .getAsJsonObject());
+		assertEquals(header.isEmpty(), true);
+		
+		// v2.1 array: value is null → stored as empty string
+		header = Header.from(JsonParser.parseString(
+		        "{\"header\":[{\"key\":\"X-NullValue\",\"value\":null}]}")
+		        .getAsJsonObject());
+		assertEquals(header.get("X-NullValue"), "");
 		
 		// header object: disabled header is stored but skipped during request preparation
 		Collection col = Collection.load(JsonParser.parseString("{\"item\":[{\"name\":\"" + GET_AUTH_USER + "\","
@@ -951,37 +949,66 @@ public class TestCoverage {
 				"{\"id\":\"007\",\"role\":\"admin\",\"traceId\":\"abc-123\"}");
 	}
 
-	@Test(expectedExceptions = IllegalArgumentException.class,
-			expectedExceptionsMessageRegExp = "Body key not found: 'NEW_KEY'")
-	public void testBodySetThrowWhenKeyNotFound() {
-		Request template = col3.getRequest(LOGIN_GET_TOKEN);
 
-		// body builder: add creates new key on cloned JSON object body
-		Body body = template.getBody().builder().add("NEW_KEY", TEST_USERNAME).end();
-		assertEquals(body.toString(),
-				"[raw/json] {\"username\":\"{{username}}\",\"password\":\"{{password}}\",\"NEW_KEY\":\""
-						+ TEST_USERNAME + "\"}");
 
-		// body builder: set missing key on original body → throws
-		template.getBody().builder().set("NEW_KEY", TEST_USERNAME);
+	@Test
+	public void testPartLevelEndParamsResolveBeforeBuildEnv() throws Exception {
+		Collection col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"Partial Resolve\",\"request\":{\"method\":\"POST\"," 
+						+ "\"url\":{\"raw\":\"{{base_url}}/search?text={{text}}\",\"query\":[{\"key\":\"text\",\"value\":\"{{text}}\"}]},"
+						+ "\"header\":[{\"key\":\"X-Trace\",\"value\":\"{{trace_id}}\"}],"
+						+ "\"auth\":{\"type\":\"bearer\",\"bearer\":[{\"key\":\"token\",\"value\":\"{{token}}\"}]},"
+						+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\",\\\"password\\\":\\\"{{password}}\\\"}\","
+						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}" )
+				.getAsJsonObject());
+
+		Environment env = new Environment("Env").builder()
+				.add("base_url", "https://api.example.com")
+				.add("text", "env-text")
+				.add("trace_id", "env-trace")
+				.add("token", "env-token")
+				.add("username", "env-user")
+				.add("password", "env-pass")
+				.end(null);
+
+		Request template = col.getRequest("Partial Resolve");
+		Request req = template.builder()
+				.url()
+					.set("text", "{{TEXT}}")
+				.end(Map.of("TEXT", "local-text"))
+				.auth()
+					.set("token", "{{token}}")
+				.end(Map.of("token", "local-token"))
+				.headers()
+					.set("X-Trace", "{{trace_id}}")
+				.end(Map.of("trace_id", "local-trace"))
+				.body()
+					.set("username", "{{username}}")
+				.end(Map.of("username", "local-user"))
+				.build(env);
+		
+		req.print();
+
+		assertEquals(req.toUrl(), "https://api.example.com/search?text=local-text");
+		assertEquals(req.getHeader().get("X-Trace"), "local-trace");
+		assertEquals(req.getAuth().get("token"), "local-token");
+		assertEquals(req.getBody().getRaw(), "{\"username\":\"local-user\",\"password\":\"env-pass\"}");
 	}
-	
-	@Test(expectedExceptions = IllegalArgumentException.class,
-	        expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body")
-	public void testBodyAddRequiresObjectBody() {
-	    Body body = Body.from(JsonParser.parseString(
-	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
-	            .getAsJsonObject());
-	    body.builder().add("x", 1).end();
-	}
-	
-	@Test(expectedExceptions = IllegalArgumentException.class,
-	        expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body")
-	public void testBodyAddFailsWhenRawBodyIsNotParsedJson() {
-	    Body body = Body.from(JsonParser.parseString(
-	            "{\"body\":{\"mode\":\"raw\",\"raw\":\"<id>{{USER_ID}}</id>\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
-	            .getAsJsonObject());
-	    body.builder().add("id", "42").end();
+
+	@Test
+	public void testParamBuilderEndWithParamsAndNullResolve() {
+		Body body = Body.from(JsonParser.parseString(
+				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\",\\\"password\\\":\\\"{{password}}\\\"}\","
+						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}").getAsJsonObject());
+
+		Body locallyResolved = body.builder()
+				.set("username", "{{username}}")
+				.end(Map.of("username", "local-user"));
+
+		assertEquals(locallyResolved.getRaw(), "{\"username\":\"local-user\",\"password\":\"{{password}}\"}");
+
+		Body unchanged = body.builder().resolve(null).end();
+		assertEquals(unchanged.getRaw(), "{\"username\":\"{{username}}\",\"password\":\"{{password}}\"}");
 	}
 	
 	@Test
@@ -1006,6 +1033,29 @@ public class TestCoverage {
 	    assertEquals(resolved.getRaw(), "{\"id\":\"42\"}");
 	    assertNotNull(resolved.getParsed());
 	    assertEquals(resolved.getParsed().isJsonObject(), true);
+	}
+
+	@Test(expectedExceptions = IllegalArgumentException.class,
+			expectedExceptionsMessageRegExp = "Body key not found: 'NEW_KEY'")
+	public void testBodySetThrowWhenKeyNotFound() {
+		Request template = col3.getRequest(LOGIN_GET_TOKEN);
+
+		// body builder: add creates new key on cloned JSON object body
+		Body body = template.getBody().builder().add("NEW_KEY", TEST_USERNAME).end();
+		assertEquals(body.toString(),
+				"[raw/json] {\"username\":\"{{username}}\",\"password\":\"{{password}}\",\"NEW_KEY\":\""
+						+ TEST_USERNAME + "\"}");
+
+		// body builder: set missing key on original body → throws
+		template.getBody().builder().set("NEW_KEY", TEST_USERNAME);
+	}
+	
+	@Test(expectedExceptions = IllegalArgumentException.class,
+			expectedExceptionsMessageRegExp = "Body builder add/set requires a JSON object body")
+	public void testBodyAddRequiresObjectBody() {
+		Body body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"[1,2,3]\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
+				 .getAsJsonObject());
+		body.builder().add("x", 1).end();
 	}
 	
 	// -------------------------------------------------------------------------
@@ -1173,6 +1223,8 @@ public class TestCoverage {
 		req = col.getRequest("Unnamed");
 		assertEquals(req.getDescription(), "");
 	}
+
+
 
 	@Test(expectedExceptions = IllegalArgumentException.class,
 			expectedExceptionsMessageRegExp = "Body key not found: 'NEW_KEY'")

@@ -1,6 +1,8 @@
 package io.jpostman;
 
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.github.jknack.handlebars.EscapingStrategy;
 import com.github.jknack.handlebars.Handlebars;
@@ -19,6 +21,8 @@ import java.util.function.Consumer;
 public class ParamBuilder<T> {
 
 	private static final Handlebars HANDLEBARS = new Handlebars().with(EscapingStrategy.NOOP);
+	private static final Pattern HANDLEBARS_TOKEN = Pattern.compile("\\{\\{\\s*([A-Za-z0-9_.-]+)\\s*\\}\\}");
+	private static final ThreadLocal<Boolean> PARTIAL_RESOLVE = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
 	@FunctionalInterface
 	public interface Builder<T> {
@@ -64,13 +68,39 @@ public class ParamBuilder<T> {
 
 	/** Substitutes all {@code {{key}}} tokens using the supplied variable map. */
 	public ParamBuilder<T> resolve(Map<String, String> vars) {
-		onResolve.accept(vars);
+		if (vars != null) {
+			onResolve.accept(vars);
+		}
 		return this;
 	}
 
 	/** Produces the final object. */
 	public T end() {
 		return onBuild.build();
+	}
+
+	/**
+	 * Resolves only variables present in the local parameter map, then produces the
+	 * final object.
+	 *
+	 * <p>Values resolved here have priority over later request-level resolution
+	 * because replaced tokens are no longer available for {@code build(env)}.
+	 * Variables not present in {@code vars} are intentionally left unchanged so
+	 * {@code build(env)} can resolve them later.</p>
+	 *
+	 * @param vars local variables used only for this builder
+	 * @return final object
+	 */
+	public T end(Map<String, String> vars) {
+		if (vars != null) {
+			PARTIAL_RESOLVE.set(Boolean.TRUE);
+			try {
+				onResolve.accept(vars);
+			} finally {
+				PARTIAL_RESOLVE.remove();
+			}
+		}
+		return end();
 	}
 
 	/**
@@ -86,7 +116,25 @@ public class ParamBuilder<T> {
 		if (value == null || vars == null) {
 			return value;
 		}
+		if (Boolean.TRUE.equals(PARTIAL_RESOLVE.get())) {
+			return renderProvidedTokensOnly(value, vars);
+		}
 		return renderHandlebars(value, vars);
+	}
+
+	private static String renderProvidedTokensOnly(String value, Map<String, String> vars) {
+		Matcher matcher = HANDLEBARS_TOKEN.matcher(value);
+		StringBuffer resolved = new StringBuffer();
+		while (matcher.find()) {
+			String key = matcher.group(1);
+			if (vars.containsKey(key)) {
+				matcher.appendReplacement(resolved, Matcher.quoteReplacement(String.valueOf(vars.get(key))));
+			} else {
+				matcher.appendReplacement(resolved, Matcher.quoteReplacement(matcher.group(0)));
+			}
+		}
+		matcher.appendTail(resolved);
+		return resolved.toString();
 	}
 
 	private static String renderHandlebars(String value, Map<String, String> vars) {
@@ -129,15 +177,6 @@ public class ParamBuilder<T> {
 		ParamInfo(String value, boolean enabled) {
 			this.value = value;
 			this.enabled = enabled;
-		}
-		
-		/**
-		 * Returns the raw parameter value.
-		 *
-		 * @return parameter value
-		 */
-		public String getValue() {
-		    return value;
 		}
 		
 		/**

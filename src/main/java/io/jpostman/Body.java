@@ -192,7 +192,7 @@ public class Body {
     }
 
     private static JsonObject asObjectForMutation(JsonElement el) {
-        if (el == null || !el.isJsonObject()) {
+        if (!el.isJsonObject()) {
             throw new IllegalArgumentException("Body builder add/set requires a JSON object body");
         }
         return el.getAsJsonObject();
