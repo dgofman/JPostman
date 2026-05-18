@@ -132,6 +132,15 @@ public class ParamBuilder<T> {
 		}
 		
 		/**
+		 * Returns the raw parameter value.
+		 *
+		 * @return parameter value
+		 */
+		public String getValue() {
+		    return value;
+		}
+		
+		/**
 		 * Returns whether this parameter is enabled.
 		 *
 		 * @return {@code true} when enabled
