@@ -574,4 +574,5 @@ Recommended usage:
 - Use `.json(...)` for unquoted raw JSON placeholders that need JSON-safe string values.
 - Use `.get(key)` for enabled values and `.raw(key)` when disabled values should also be readable.
 - Use `Params.asMap(...)` / `Params.asJson(...)` for reusable variable maps without `Map.of(...)` limits.
-
+- Use `Params.asList(...)` for mutable list values inside parameter maps.
+- Use `Params.copy(...)` to merge multiple parameter maps; later maps override duplicate keys and `null` maps are ignored.

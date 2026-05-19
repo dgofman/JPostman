@@ -16,7 +16,6 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertThrows;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -198,13 +197,21 @@ public class TestCoverage {
 		// param helper: null input should not throw
 		Params.substituteVars(null, null);
 		
-		//
-		Map<String, Object> result1 = Params.asMap("key1", "value", "key2", true, "key3", 12.34, "key4", null, "key5", Arrays.asList(1,2,3));
-		assertEquals(result1.toString(), "{key1=value, key2=true, key3=12.34, key4=null, key5=[1, 2, 3]}");
-		
-		//
-		Map<String, Object> result2 = Params.asJson("key1", "value", "key2", true, "key3", 12.34, "key4", null, "key5", Arrays.asList(1,2,3));
-		assertEquals(result2.toString(), "{key1=\"value\", key2=true, key3=12.34, key4=null, key5=[1, 2, 3]}");
+		// asMap: creates an ordered map and keeps values as-is, including lists.
+		Map<String, Object> result1 = Params.asMap("key1", "value", "key2", Params.asList(1, 2, 3));
+		assertEquals(result1.toString(), "{key1=value, key2=[1, 2, 3]}");
+
+		// asJson: JSON-stringifies String values, but keeps nested maps and primitive values as-is.
+		Map<String, Object> result2 = Params.asJson("key3", "value",
+		        "key4", Params.asMap("key5", true, "key6", 12.34, "key7", null));
+		assertEquals(result2.toString(), "{key3=\"value\", key4={key5=true, key6=12.34, key7=null}}");
+
+		// copy: merges maps into a new ordered map; later maps are appended and override duplicate keys.
+		assertEquals(Params.copy(result1, result2).toString(),
+		        "{key1=value, key2=[1, 2, 3], key3=\"value\", key4={key5=true, key6=12.34, key7=null}}");
+
+		// copy: ignores null maps.
+		assertEquals(Params.copy(result1, null).toString(), "{key1=value, key2=[1, 2, 3]}");
 		
 		// substituteVars: null vars → original value returned
 		assertEquals(Params.substituteVars("{{username}}", null), "{{username}}");

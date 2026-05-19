@@ -1,7 +1,9 @@
 package io.jpostman;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -44,8 +46,8 @@ public class Params<T> {
 	/** Builds the final target object from the builder state. */
 	private final Builder<T> onBuild;
 
-	Params(BiConsumer<String, Object> onPut, BiConsumer<String, Object> onSet,
-			Consumer<Map<String, ?>> onResolve, Builder<T> onBuild) {
+	Params(BiConsumer<String, Object> onPut, BiConsumer<String, Object> onSet, Consumer<Map<String, ?>> onResolve,
+			Builder<T> onBuild) {
 		this.onPut = onPut;
 		this.onSet = onSet;
 		this.onResolve = onResolve;
@@ -86,10 +88,12 @@ public class Params<T> {
 	 * Resolves only variables present in the local parameter map, then produces the
 	 * final object.
 	 *
-	 * <p>Values resolved here have priority over later request-level resolution
+	 * <p>
+	 * Values resolved here have priority over later request-level resolution
 	 * because replaced tokens are no longer available for {@code build(env)}.
 	 * Variables not present in {@code vars} are intentionally left unchanged so
-	 * {@code build(env)} can resolve them later.</p>
+	 * {@code build(env)} can resolve them later.
+	 * </p>
 	 *
 	 * @param vars local variables used only for this builder
 	 * @return final object
@@ -109,37 +113,76 @@ public class Params<T> {
 	/**
 	 * Creates an ordered variable map from alternating key/value pairs.
 	 *
-	 * @param key first variable name
+	 * @param key   first variable name
 	 * @param value first variable value
-	 * @param rest remaining key/value pairs
+	 * @param rest  remaining key/value pairs
 	 * @return ordered variable map
 	 */
 	public static Map<String, Object> asMap(String key, Object value, Object... rest) {
-	    return toMap(false, key, value, rest);
+		return toMap(false, key, value, rest);
 	}
 
 	/**
 	 * Creates an ordered variable map and JSON-stringifies String values.
 	 *
-	 * @param key first variable name
+	 * @param key   first variable name
 	 * @param value first variable value
-	 * @param rest remaining key/value pairs
+	 * @param rest  remaining key/value pairs
 	 * @return ordered JSON-ready variable map
 	 */
 	public static Map<String, Object> asJson(String key, Object value, Object... rest) {
-	    return toMap(true, key, value, rest);
+		return toMap(true, key, value, rest);
 	}
 
+	/**
+	 * Creates a mutable ordered map by merging the supplied maps.
+	 *
+	 * <p>
+	 * When the same key exists in multiple maps, the later map wins.
+	 * </p>
+	 *
+	 * @param maps source maps; null maps are ignored
+	 * @return mutable merged map
+	 */
+	@SafeVarargs
+	public static Map<String, Object> copy(Map<String, ?>... maps) {
+		Map<String, Object> result = new LinkedHashMap<>();
+		for (Map<String, ?> map : maps) {
+			if (map != null) {
+				result.putAll(map);
+			}
+		}
+		return result;
+	}
 
 	/**
-	 * Resolves variables using local key/value pairs, then produces the final object.
+	 * Creates a mutable list from the supplied values.
 	 *
-	 * <p>This is a convenience alias for {@code end(Map.of(...))} without the
-	 * {@code Map.of(...)} wrapper.</p>
+	 * @param values list values
+	 * @param <T> value type
+	 * @return mutable list containing the supplied values
+	 */
+	@SafeVarargs
+	public static <T> List<T> asList(T... values) {
+	    List<T> result = new ArrayList<>();
+        for (T value : values) {
+            result.add(value);
+        }
+	    return result;
+	}
+
+	/**
+	 * Resolves variables using local key/value pairs, then produces the final
+	 * object.
 	 *
-	 * @param key first key
+	 * <p>
+	 * This is a convenience alias for {@code end(Map.of(...))} without the
+	 * {@code Map.of(...)} wrapper.
+	 * </p>
+	 *
+	 * @param key   first key
 	 * @param value first value
-	 * @param rest remaining alternating key/value pairs
+	 * @param rest  remaining alternating key/value pairs
 	 * @return final object
 	 */
 	public T map(String key, Object value, Object... rest) {
@@ -150,22 +193,22 @@ public class Params<T> {
 	 * Resolves variables using local key/value pairs where String values are
 	 * JSON-stringified, then produces the final object.
 	 *
-	 * <p>Use this for raw JSON templates that need quoted string values, for
-	 * example {@code {"username":{{username}}}}.</p>
+	 * <p>
+	 * Use this for raw JSON templates that need quoted string values, for example
+	 * {@code {"username":{{username}}}}.
+	 * </p>
 	 *
-	 * @param key first key
+	 * @param key   first key
 	 * @param value first value
-	 * @param rest remaining alternating key/value pairs
+	 * @param rest  remaining alternating key/value pairs
 	 * @return final object
 	 */
 	public T json(String key, Object value, Object... rest) {
 		return end(toMap(true, key, value, rest));
 	}
 
-	private static Map<String, Object> toMap(boolean stringifyStrings,
-			String key, Object value, Object... rest) {
-		int restLength = rest == null ? 0 : 
-			rest.length;
+	private static Map<String, Object> toMap(boolean stringifyStrings, String key, Object value, Object... rest) {
+		int restLength = rest == null ? 0 : rest.length;
 		if (restLength % 2 != 0) {
 			throw new IllegalArgumentException("Key/value arguments must be pairs.");
 		}
@@ -190,11 +233,11 @@ public class Params<T> {
 
 	/**
 	 * Replaces all {@code {{key}}} tokens in {@code value} with entries from
-	 * {@code vars} using Handlebars. Unknown tokens use normal Handlebars
-	 * behavior and render as empty strings.
+	 * {@code vars} using Handlebars. Unknown tokens use normal Handlebars behavior
+	 * and render as empty strings.
 	 *
 	 * @param value source text; may be {@code null}
-	 * @param vars variable map; may be {@code null}
+	 * @param vars  variable map; may be {@code null}
 	 * @return substituted text, or {@code null} when {@code value} is null
 	 */
 	public static String substituteVars(String value, Map<String, ?> vars) {
@@ -240,10 +283,12 @@ public class Params<T> {
 	/**
 	 * Stores one Postman parameter value together with its enabled/disabled state.
 	 *
-	 * <p>Postman can keep disabled headers, query parameters, and environment
-	 * variables in the exported JSON. Keeping this metadata lets the parser preserve
-	 * the original collection structure while the public API can still expose only
-	 * enabled values for execution and variable substitution.</p>
+	 * <p>
+	 * Postman can keep disabled headers, query parameters, and environment
+	 * variables in the exported JSON. Keeping this metadata lets the parser
+	 * preserve the original collection structure while the public API can still
+	 * expose only enabled values for execution and variable substitution.
+	 * </p>
 	 */
 	static public class Entry {
 
@@ -256,42 +301,43 @@ public class Params<T> {
 		/**
 		 * Creates parameter metadata.
 		 *
-		 * @param value parameter value; converted to an empty string when {@code null}
+		 * @param value   parameter value; converted to an empty string when
+		 *                {@code null}
 		 * @param enabled true when the parameter should be active
 		 */
 		Entry(String value, boolean enabled) {
 			this.value = value;
 			this.enabled = enabled;
 		}
-		
+
 		/**
 		 * Returns the raw parameter value.
 		 *
 		 * @return parameter value
 		 */
 		public String getValue() {
-		    return value;
+			return value;
 		}
-		
+
 		/**
 		 * Returns whether this parameter is enabled.
 		 *
 		 * @return {@code true} when enabled
 		 */
 		public boolean isEnabled() {
-		    return enabled;
+			return enabled;
 		}
 
 		/**
 		 * Enables or disables this parameter.
 		 *
-		 * @param enabled {@code true} to enable the parameter;
-		 *                {@code false} to disable it
+		 * @param enabled {@code true} to enable the parameter; {@code false} to disable
+		 *                it
 		 */
 		public void setEnabled(boolean enabled) {
-		    this.enabled = enabled;
+			this.enabled = enabled;
 		}
-		
+
 		@Override
 		public String toString() {
 			return String.format("value=%s, enabled=%b", value, enabled);
