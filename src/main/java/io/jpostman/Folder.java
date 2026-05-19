@@ -60,10 +60,7 @@ public class Folder {
 	    );
 	}
 
-	/**
-	 * Prints all requests grouped by their parent folder. Requests at the
-	 * collection root are listed under "(root)".
-	 */
+	/** Logs this folder and its direct requests at TRACE level. */
 	public void print() {
 		log.trace(toDebugString());
 	}

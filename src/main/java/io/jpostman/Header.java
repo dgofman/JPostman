@@ -64,6 +64,26 @@ public class Header {
 		Entry info = getParam(key);
 		return info != null && info.enabled ? info.value : null;
 	}
+	
+	/**
+	 * Returns unresolved {@code {{token}}} names found in header names and values.
+	 * <p>
+	 * Each token is returned as a key mapped to an empty string. For example,
+	 * {@code {{userId}}} becomes {@code "userId" -> ""}.
+	 *
+	 * @return ordered token map found in header names and values
+	 */
+	public Map<String, String> params() {
+	    Map<String, String> result = new LinkedHashMap<>();
+	    Map<String, String> values = new LinkedHashMap<>();
+
+	    params.forEach((key, info) -> {
+	        values.put(key, info.value);
+	    });
+
+	    Params.addTokens(result, values);
+	    return result;
+	}
 
 	// -------------------------------------------------------------------------
 	// Factory
@@ -100,7 +120,11 @@ public class Header {
 		return header;
 	}
 
-	/** Returns a {@link Params} pre-populated from this header map. */
+	/**
+	 * Returns a fluent builder pre-populated from this header map.
+	 *
+	 * @return header parameter builder
+	 */
 	public Params<Header> builder() {
 		Map<String, Entry> params = new LinkedHashMap<>(this.params);
 		Params.Builder<Header> buildFn = () -> {

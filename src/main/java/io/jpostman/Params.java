@@ -26,7 +26,7 @@ public class Params<T> {
 
 	private static final Gson GSON = new Gson();
 	private static final Handlebars HANDLEBARS = new Handlebars().with(EscapingStrategy.NOOP);
-	private static final Pattern HANDLEBARS_TOKEN = Pattern.compile("\\{\\{\\s*([A-Za-z0-9_.-]+)\\s*\\}\\}");
+	public static final Pattern HANDLEBARS_TOKEN = Pattern.compile("\\{\\{\\s*([A-Za-z0-9_.-]+)\\s*\\}\\}");
 	private static final ThreadLocal<Boolean> PARTIAL_RESOLVE = ThreadLocal.withInitial(() -> Boolean.FALSE);
 
 	@FunctionalInterface
@@ -232,6 +232,52 @@ public class Params<T> {
 	}
 
 	/**
+	 * Adds all Handlebars-style {@code {{token}}} placeholders found in a text
+	 * value to the supplied target map.
+	 *
+	 * <p>Every discovered token is inserted with an empty string value and existing
+	 * entries are preserved. Passing {@code null} for either argument is treated as
+	 * a no-op.</p>
+	 *
+	 * @param target destination token map
+	 * @param value text to scan for tokens
+	 * @return {@code target}, or an empty map when {@code target} is {@code null}
+	 */
+	public static Map<String, String> addTokens(Map<String, String> target, String value) {
+		if (target == null || value == null) {
+			return Map.of();
+		}
+		Matcher matcher = HANDLEBARS_TOKEN.matcher(value);
+		while (matcher.find()) {
+			target.putIfAbsent(matcher.group(1), "");
+		}
+		return target;
+	}
+
+	/**
+	 * Adds all Handlebars-style {@code {{token}}} placeholders found in a map's
+	 * keys and values to the supplied target map.
+	 *
+	 * <p>This is useful for request parts where both parameter names and parameter
+	 * values may contain unresolved tokens. Existing entries in {@code target} are
+	 * not overwritten.</p>
+	 *
+	 * @param target destination token map
+	 * @param values map whose keys and values should be scanned
+	 * @return {@code target}, or an empty map when {@code target} is {@code null}
+	 */
+	public static Map<String, String> addTokens(Map<String, String> target, Map<String, String> values) {
+		if (target == null || values == null) {
+			return Map.of();
+		}
+		values.forEach((key, value) -> {
+			addTokens(target, key);
+			addTokens(target, value);
+		});
+		return target;
+	}
+
+	/**
 	 * Replaces all {@code {{key}}} tokens in {@code value} with entries from
 	 * {@code vars} using Handlebars. Unknown tokens use normal Handlebars behavior
 	 * and render as empty strings.
@@ -250,6 +296,10 @@ public class Params<T> {
 		return renderHandlebars(value, vars);
 	}
 
+	/**
+	 * Resolves only tokens that exist in {@code vars}; all other tokens remain in
+	 * their original {@code {{token}}} form for later resolution.
+	 */
 	private static String renderProvidedTokensOnly(String value, Map<String, ?> vars) {
 		Matcher matcher = HANDLEBARS_TOKEN.matcher(value);
 		StringBuffer resolved = new StringBuffer();
@@ -265,6 +315,10 @@ public class Params<T> {
 		return resolved.toString();
 	}
 
+	/**
+	 * Resolves a template using Handlebars, falling back to direct replacement when
+	 * the template cannot be compiled.
+	 */
 	private static String renderHandlebars(String value, Map<String, ?> vars) {
 		try {
 			Template template = HANDLEBARS.compileInline(value);
@@ -278,6 +332,28 @@ public class Params<T> {
 			}
 			return resolved;
 		}
+	}
+	
+	/**
+	 * Fills an unresolved token map from the supplied parameter map.
+	 *
+	 * <p>Only keys already present in {@code result} are updated. Keys that do not
+	 * exist in {@code params} keep their current value, usually an empty string.</p>
+	 *
+	 * @param result unresolved token map to update
+	 * @param params source parameter values
+	 * @return {@code result}, or an empty map when either argument is {@code null}
+	 */
+	public static Map<String, String> resolve(Map<String, String> result, Map<String, String> params) {
+	    if (result == null || params == null) {
+	        return Map.of();
+	    }
+	    for (String key : result.keySet()) {
+	        if (params.containsKey(key)) {
+	            result.put(key, params.get(key));
+	        }
+	    }
+	    return result;
 	}
 
 	/**
@@ -313,7 +389,8 @@ public class Params<T> {
 		/**
 		 * Returns the raw parameter value.
 		 *
-		 * @return parameter value
+		 * @return parameter value, or an empty string when constructed with
+		 *         {@code null}
 		 */
 		public String getValue() {
 			return value;

@@ -7,6 +7,7 @@ import io.restassured.http.ContentType;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -86,52 +87,89 @@ public class Request {
 	// Accessors
 	// -------------------------------------------------------------------------
 
+	/** @return request display name from the Postman item. */
 	public String getName() {
 		return name;
 	}
 
+	/** @return HTTP method, for example {@code GET} or {@code POST}. */
 	public String getMethod() {
 		return method;
 	}
 
+	/** @return parent folder name, or {@code "(root)"} for root-level requests. */
 	public String getFolderName() {
 		return folderName;
 	}
 
+	/** @return request description, or an empty string when none is defined. */
 	public String getDescription() {
 		return description;
 	}
 	
+	/** @return resolved URL string including enabled query parameters. */
 	public String toUrl() {
 		return url.toString();
 	}
 
+	/** @return parsed URL object. */
 	public Url getUrl() {
 		return url;
 	}
 	
+	/** @return parsed request headers. */
 	public Header getHeader() {
 		return header;
 	}
 
+	/** @return parsed request authentication configuration. */
 	public Auth getAuth() {
 		return auth;
 	}
 	
+	/** @return parsed request body. */
 	public Body getBody() {
 		return body;
 	}
-	
+
+	/**
+	 * Returns all unresolved {@code {{token}}} names used by this request.
+	 *
+	 * <p>The returned map preserves discovery order and initializes every token
+	 * value to an empty string, so callers can fill only the values they need.</p>
+	 *
+	 * @return ordered token map, for example {@code {base_url="", token=""}}
+	 */
+	public Map<String, String> params() {
+		Map<String, String> result = new LinkedHashMap<>();
+		Params.addTokens(result, url.getOriginal());
+		Params.addTokens(result, header.getParams());
+		Params.addTokens(result, auth.getParams());
+		Params.addTokens(result, body.getRaw());
+		return result;
+	}
+
+	/**
+	 * Returns this request's unresolved token map filled from enabled environment
+	 * parameters when matching keys exist. Missing or disabled parameters remain
+	 * mapped to an empty string.
+	 *
+	 * @param env environment used to fill matching token values; may be {@code null}
+	 * @return ordered token map with environment values applied
+	 */
+	public Map<String, String> resolve(Environment env) {
+	    Map<String, String> result = params();
+	    if (env != null) {
+	        env.resolve(result);
+	    }
+	    return result;
+	}
 	
 
 	/**
 	 * Returns a {@link RequestBuilder} pre-populated from this request. Override
-	 * headers, body, and auth params before calling {@link RequestBuilder#build()}.
-	 *
-	 * <pre>{@code
-	 * Request built = request.build().header().set("X-AUTH-APIKEY", "my-key").done().body()
-	 * 		.add("raw", "{\"user_name\":\"admin\"}").done().auth().set("token", "my-bearer").done().build();
-	 * }</pre>
+	 * URL/query parameters, headers, body, or auth parameters before calling
+	 * {@link RequestBuilder#build()}.
 	 */
 	public RequestBuilder builder() {
 		return new RequestBuilder(this);
@@ -170,10 +208,10 @@ public class Request {
 		}
 		
 		/**
-		 * Returns the current request builder instance for URL customization.
+		 * Enters the URL/query-parameter builder step.
 		 *
 		 * <pre>{@code
-		 * request.builder().url().build();
+		 * request.builder().url().set("limit", 25).end().build();
 		 * }</pre>
 		 */
 		public ParamStep url() {
@@ -181,15 +219,15 @@ public class Request {
 		}
 
 		/**
-		 * Overrides the request URL.
+		 * Configures the URL/query parameters using a lambda-style nested builder.
 		 *
 		 * <pre>{@code
 		 * request.builder()
-		 *     .url("http://{{base_url}}/{{version}}/users")
+		 *     .url(u -> u.set("limit", 25))
 		 *     .build(env);
 		 * }</pre>
 		 *
-		 * @param url request URL
+		 * @param customizer URL customization callback
 		 * @return current request builder
 		 */
 		public RequestBuilder url(Consumer<ParamStep> customizer) {
@@ -298,10 +336,13 @@ public class Request {
 
 		/**
 		 * Resolves all {@code {{variable}}} tokens in URL, headers, body, and auth
-		 * params using the given environment's variable map.
+		 * parameters using the given environment's enabled variable map.
+		 *
+		 * @param env environment used for variable substitution; may be {@code null}
+		 * @return built request
 		 */
 		public Request build(Environment env) {
-			Map<String, String> vars = env.getParams();
+			Map<String, String> vars = env == null ? Map.of() : env.getParams();
 			urlBuilder.resolve(vars);
 			headerBuilder.resolve(vars);
 			authBuilder.resolve(vars);
@@ -331,7 +372,7 @@ public class Request {
 				return this;
 			}
 
-				/** Returns to the parent request builder. */
+			/** Returns to the parent request builder without resolving local variables. */
 			public RequestBuilder end() {
 				return RequestBuilder.this;
 			}
@@ -450,7 +491,8 @@ public class Request {
 	// -------------------------------------------------------------------------
 
 	/**
-	 * Detailed multi-line output including description, auth, headers, and body.
+	 * Logs detailed multi-line output including description, auth, headers, and body
+	 * at TRACE level.
 	 */
 	public void print() {
 		log.trace(toDebugString());

@@ -41,10 +41,12 @@ public class Auth {
 
 	private static final Logger log = LoggerFactory.getLogger(Auth.class);
 
+	private final String raw;
 	private final String type;
 	private final Map<String, String> params;
-
-	Auth(String type, Map<String, String> params) {
+	
+	Auth(String raw, String type, Map<String, String> params) {
+		this.raw = raw;
 		this.type = type;
 		this.params = Collections.unmodifiableMap(params);
 	}
@@ -62,10 +64,10 @@ public class Auth {
 	 */
 	public static @NonNull Auth from(JsonObject obj) {
 		if (!obj.has("auth") || obj.get("auth").isJsonNull()) {
-			return new Auth("noauth", new LinkedHashMap<>());
+			return new Auth("", "noauth", new LinkedHashMap<>());
 		}
 		if (!obj.get("auth").isJsonObject()) {
-			return new Auth("noauth", new LinkedHashMap<>());
+			return new Auth("", "noauth", new LinkedHashMap<>());
 		}
 		JsonObject authObj = obj.getAsJsonObject("auth");
 		String type = authObj.has("type") && !authObj.get("type").isJsonNull()
@@ -73,18 +75,23 @@ public class Auth {
 				: "noauth";
 
 		Map<String, String> params = new LinkedHashMap<>();
+		String raw = "";
 
 		// Postman v2.1 stores auth params as an array: [{key, value, type}, ...]
 		// The array key matches the auth type (e.g. "bearer", "basic", "apikey").
-		if (authObj.has(type) && authObj.get(type).isJsonArray()) {
-			for (JsonElement el : authObj.getAsJsonArray(type)) {
-				if (!el.isJsonObject())
-					continue;
-				JsonObject entry = el.getAsJsonObject();
-				String key = entry.has("key") && !entry.get("key").isJsonNull() ? entry.get("key").getAsString() : "";
-				String value = entry.has("value") && !entry.get("value").isJsonNull() ? entry.get("value").getAsString() : "";
-				if (!key.isEmpty())
-					params.put(key, value);
+		if (authObj.has(type)) {
+			JsonElement val = authObj.get(type);
+			raw = val.toString();
+			if (val.isJsonArray()) {
+				for (JsonElement el : authObj.getAsJsonArray(type)) {
+					if (!el.isJsonObject())
+						continue;
+					JsonObject entry = el.getAsJsonObject();
+					String key = entry.has("key") && !entry.get("key").isJsonNull() ? entry.get("key").getAsString() : "";
+					String value = entry.has("value") && !entry.get("value").isJsonNull() ? entry.get("value").getAsString() : "";
+					if (!key.isEmpty())
+						params.put(key, value);
+				}
 			}
 		}
 
@@ -97,7 +104,7 @@ public class Auth {
 			}
 		}
 
-		return new Auth(type, params);
+		return new Auth(raw, type, params);
 	}
 
 	// -------------------------------------------------------------------------
@@ -128,14 +135,35 @@ public class Auth {
 	public boolean isNoAuth() {
 		return "noauth".equals(type);
 	}
+	
+
+	/** @return raw auth parameter JSON for the selected auth type. */
+	public String getRaw() {
+		return raw;
+	}
+	
+	/**
+	 * Returns unresolved {@code {{token}}} names found in this auth configuration.
+	 *
+	 * <p>The returned map preserves discovery order and initializes every token
+	 * value to an empty string, so callers can fill only the values they need.</p>
+	 *
+	 * @return ordered token map, for example {@code {base_url="", token=""}}
+	 */
+	public Map<String, String> params() {
+		Map<String, String> result = new LinkedHashMap<>();
+		Params.addTokens(result, raw);
+		return result;
+	}
 
 	/**
-	 * Returns a {@link Params} pre-populated from this auth's params.
+	 * Returns a fluent builder pre-populated from this auth's parameter map.
+	 *
+	 * @return auth parameter builder
 	 */
 	public Params<Auth> builder() {
-		String authType = this.type;
 		Map<String, String> params = new LinkedHashMap<>(this.params);
-		Params.Builder<Auth> buildFn = () -> new Auth(authType, new LinkedHashMap<>(params));
+		Params.Builder<Auth> buildFn = () -> new Auth(this.raw, this.type, new LinkedHashMap<>(params));
 		return new Params<Auth>(
 				// ADD
 				(String key, Object value) -> params.put(key, String.valueOf(value)),

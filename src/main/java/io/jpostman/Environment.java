@@ -33,6 +33,11 @@ public class Environment {
 	private final String name;
 	private final Map<String, Entry> params = new LinkedHashMap<>();
 
+	/**
+	 * Creates an environment container with the supplied display name.
+	 *
+	 * @param name environment name
+	 */
 	public Environment(String name) {
 		this.name = name;
 	}
@@ -85,7 +90,14 @@ public class Environment {
 	    return info != null && info.enabled ? info.value : null;
 	}
 
-	/** Returns a {@link Params} pre-populated from this environment. */
+	/**
+	 * Returns a fluent builder pre-populated with this environment's variables.
+	 *
+	 * <p>{@code add(...)} creates enabled variables and {@code set(...)} updates
+	 * existing variables while preserving their enabled/disabled state.</p>
+	 *
+	 * @return environment builder
+	 */
 	public Params<Environment> builder() {
 		String envName = this.name;
 		Map<String, Entry> params = new LinkedHashMap<>(this.params);
@@ -113,14 +125,25 @@ public class Environment {
 	}
 
 	/**
-	 * Load a Postman environment from a file path. Opens and closes the file
-	 * internally.
+	 * Loads a Postman environment from a file path and closes the file internally.
+	 *
+	 * @param filePath absolute or relative path to a
+	 *                 {@code *.postman_environment.json} file
+	 * @return parsed environment
+	 * @throws IOException if the file cannot be read or parsed
 	 */
 	public static Environment load(String filePath) throws IOException {
 		return load(new FileInputStream(filePath));
 	}
 
-	/** Load a Postman environment from an input stream. */
+	/**
+	 * Loads a Postman environment from an input stream. The stream is closed by
+	 * this method.
+	 *
+	 * @param is input stream positioned at the start of the environment JSON
+	 * @return parsed environment
+	 * @throws IOException if the stream cannot be read or parsed
+	 */
 	public static Environment load(InputStream is) throws IOException {
 		try (Reader reader = new InputStreamReader(is)) {
 			return load(JsonParser.parseReader(reader).getAsJsonObject());
@@ -134,6 +157,7 @@ public class Environment {
 	 *
 	 * @param root environment root JSON object
 	 * @return populated environment
+	 * @throws IOException kept for API symmetry with file and stream loaders
 	 */
 	public static Environment load(JsonObject root) throws IOException {
 		String envName = root.has("name") && !root.get("name").isJsonNull()
@@ -159,6 +183,32 @@ public class Environment {
 		}
 		return env;
 	}
+	
+	/**
+	 * Resolves the supplied unresolved token map using this environment's enabled
+	 * parameters.
+	 * <p>
+	 * For every key already present in {@code result}, this method checks whether
+	 * this environment contains a matching enabled parameter. When a match exists,
+	 * the empty/default value in {@code result} is replaced with the environment
+	 * value. Missing or disabled parameters are left unchanged.
+	 *
+	 * @param result unresolved token map, usually produced by {@code Request.params()};
+	 *               keys are token names and values are usually empty strings
+	 * @return the same token map instance with matching environment values applied
+	 */
+	public Map<String, String> resolve(Map<String, String> result) {
+	    if (result == null) {
+	        return Map.of();
+	    }
+	    for (String key : result.keySet()) {
+	        if (params.containsKey(key)) {
+	            result.put(key, params.get(key).value);
+	        }
+	    }
+	    return result;
+	}
+	
 
 	/** Logs the environment name and enabled variables. */
 	public void print() {

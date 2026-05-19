@@ -1,6 +1,7 @@
 package io.jpostman;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,8 +26,12 @@ import com.google.gson.JsonSyntaxException;
  */
 public class Body {
 
+	private static final String NONE = "none";
     private static final Gson GSON = new Gson();
-    private static final String NONE = "none";
+    private static final Gson PRETTY_GSON = GSON.newBuilder()
+							                    .disableHtmlEscaping()
+							                    .setPrettyPrinting()
+							                    .create();
     private static final Logger log = LoggerFactory.getLogger(Body.class);
 
     private final String mode;
@@ -81,13 +86,13 @@ public class Body {
 
 
     /**
-     * Normalizes Postman {@code formdata} and {@code urlencoded} payloads.
+     * Converts Postman array/string payload forms into a single JSON element used
+     * internally for form-data and URL-encoded bodies.
      *
-     * <p>Normal Postman exports store these payloads as arrays. Some tests and
-     * older/custom exports may store JSON-looking text. A non-blank string is
-     * parsed as JSON when possible; invalid strings are preserved as primitives.
-     * Blank strings are treated as no body so GET-like requests do not send an
-     * accidental {@code ""} payload.</p>
+     * <p>Postman normally exports these payloads as arrays. Some tests and
+     * older/custom exports may store JSON-looking text instead. A non-blank string
+     * is parsed as JSON when possible; invalid strings are preserved as string
+     * primitives. Blank strings are treated as no body.</p>
      */
     private static JsonElement parseBodyPayload(JsonElement payload) {
         if (payload == null) {
@@ -108,6 +113,7 @@ public class Body {
         return payload.deepCopy();
     }
 
+    /** Returns a string member from a JSON object or a default value when absent. */
     private static String getString(JsonObject obj, String key, String def) {
         JsonElement value = obj.get(key);
         return value != null && !value.isJsonNull() && value.isJsonPrimitive()
@@ -115,6 +121,7 @@ public class Body {
                 : def;
     }
 
+    /** Extracts the raw body language option from a Postman body object. */
     private static String getLanguage(JsonObject bodyObj) {
         if (bodyObj.has("options") && bodyObj.get("options").isJsonObject()) {
             JsonObject options = bodyObj.getAsJsonObject("options");
@@ -124,14 +131,30 @@ public class Body {
         }
         return "";
     }
+    
+    /**
+	 * Returns unresolved {@code {{token}}} names found in this body.
+	 *
+	 * <p>The returned map preserves discovery order and initializes every token
+	 * value to an empty string, so callers can fill only the values they need.</p>
+	 *
+	 * @return ordered token map, for example {@code {userId="", token=""}}
+	 */
+	public Map<String, String> params() {
+		Map<String, String> result = new LinkedHashMap<>();
+		Params.addTokens(result, getRaw());
+		return result;
+	}
 
     /**
-     * Creates a builder for this body.
+     * Returns a fluent builder pre-populated from this body.
      *
      * <p>Template replacement is handled through {@link Params}. JSON
      * parsing is performed only inside the builder, so raw template bodies like
      * {@code {"username": {{TOKEN}}}} can be resolved first and mutated after
      * they become valid JSON.</p>
+     *
+     * @return body parameter builder
      */
     public Params<Body> builder() {
         final String bodyMode = this.mode;
@@ -174,6 +197,7 @@ public class Body {
                 });
     }
 
+    /** Returns the parsed JSON object/array used as the starting point for mutations. */
     private static JsonElement initialParsed(String mode, String raw) {
         JsonElement parsed = tryParseJson(raw);
         if (parsed == null && !"raw".equals(mode)) {
@@ -182,6 +206,7 @@ public class Body {
         return parsed;
     }
 
+    /** Applies queued body field changes to the current JSON object body. */
     private static void applyPendingMutations(String[] workingRaw, JsonElement[] workingParsed, List<BodyMutation> pendingMutations) {
         if (pendingMutations.isEmpty()) {
             return;
@@ -201,6 +226,7 @@ public class Body {
         pendingMutations.clear();
     }
 
+    /** Attempts to parse a raw string as JSON, returning {@code null} on failure. */
     private static JsonElement tryParseJson(String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
@@ -212,6 +238,7 @@ public class Body {
         }
     }
 
+    /** Recursively substitutes string values inside a parsed JSON tree. */
     private static JsonElement substituteJson(JsonElement el, Map<String, ?> vars) {
         if (el.isJsonNull()) {
             return el;
@@ -250,6 +277,29 @@ public class Body {
     public String getLanguage() {
         return language;
     }
+    
+    /**
+     * Returns the body formatted for debug output. JSON bodies are pretty-printed;
+     * JSON string primitives are unwrapped so XML or JSON stored as a string is
+     * displayed without extra quotes. Non-JSON body text is returned unchanged.
+     *
+     * @return formatted body text
+     */
+    public String format() {
+        JsonElement parsed = getParsed();
+        if (parsed == null) {
+            return raw;
+        }
+        if (parsed.isJsonPrimitive() && parsed.getAsJsonPrimitive().isString()) {
+            String text = parsed.getAsString();
+            JsonElement inner = tryParseJson(text);
+            if (inner != null && (inner.isJsonObject() || inner.isJsonArray())) {
+                return PRETTY_GSON.toJson(inner);
+            }
+            return text;
+        }
+        return PRETTY_GSON.toJson(parsed);
+    }
 
     /**
      * Lazily parses the current raw body as JSON.
@@ -278,7 +328,7 @@ public class Body {
     @Override
     public String toString() {
         if ("raw".equals(mode)) {
-            return "[" + mode + (language.isEmpty() ? "" : "/" + language) + "] " + raw;
+            return "[" + mode + (language.isEmpty() ? "" : "/" + language) + "] " + format();
         }
 
         JsonElement parsed = getParsed();

@@ -22,7 +22,7 @@ Instead of copying request URLs, headers, authentication, query parameters, and 
 <dependency>
     <groupId>io.github.dgofman</groupId>
     <artifactId>jpostman</artifactId>
-    <version>1.3.3</version> <!-- replace with latest Maven Central version -->
+    <version>1.3.4</version> <!-- replace with latest Maven Central version -->
 </dependency>
 ```
 

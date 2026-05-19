@@ -42,8 +42,10 @@ public class Collection {
 	/**
 	 * Load a collection from a file path. Opens and closes the file internally.
 	 *
-	 * @param filePath absolute or relative path to the *.postman_collection.json
-	 *                 file
+	 * @param filePath absolute or relative path to the
+	 *                 {@code *.postman_collection.json} file
+	 * @return populated collection
+	 * @throws IOException if the file cannot be read or parsed
 	 */
 	public static Collection load(String filePath) throws IOException {
 		return load(new FileInputStream(filePath));
@@ -54,6 +56,7 @@ public class Collection {
 	 *
 	 * @param is input stream positioned at the start of the collection JSON
 	 * @return populated collection
+	 * @throws IOException if the stream cannot be read or parsed
 	 */
 	public static Collection load(InputStream is) throws IOException {
 		try (Reader reader = new InputStreamReader(is)) {
@@ -66,6 +69,7 @@ public class Collection {
 	 *
 	 * @param root collection root JSON object
 	 * @return populated collection
+	 * @throws IOException kept for API symmetry with file and stream loaders
 	 */
 	public static Collection load(JsonObject root) throws IOException {
 		Collection col = new Collection(root);
@@ -106,6 +110,9 @@ public class Collection {
 	// Parsing helpers
 	// -------------------------------------------------------------------------
 
+	/**
+	 * Recursively parses Postman item arrays into folders and request objects.
+	 */
 	private static void parseItems(JsonArray items, Collection col, Folder parentFolder) {
 		for (JsonElement element : items) {
 			JsonObject item = element.getAsJsonObject();
@@ -202,7 +209,7 @@ public class Collection {
 	// Print functions
 	// -------------------------------------------------------------------------
 
-	/** Prints every folder and its request count. */
+	/** Logs collection details at TRACE level. */
 	public void print() {
 		log.trace(toDebugString());
 	}

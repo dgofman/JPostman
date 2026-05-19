@@ -148,6 +148,20 @@ public class Url {
 			}
 		}
 	}
+	
+	/**
+	 * Returns unresolved {@code {{token}}} names found in the original URL.
+	 *
+	 * <p>The returned map preserves discovery order and initializes every token
+	 * value to an empty string, so callers can fill only the values they need.</p>
+	 *
+	 * @return ordered token map, for example {@code {base_url="", token=""}}
+	 */
+	public Map<String, String> params() {
+		Map<String, String> result = new LinkedHashMap<>();
+		Params.addTokens(result, getOriginal());
+		return result;
+	}
 
 	/** @return base URL without query parameters */
 	public String getRaw() {
@@ -196,7 +210,11 @@ public class Url {
 		return raw.isEmpty();
 	}
 
-	/** Returns a builder pre-populated from this URL. */
+	/**
+	 * Returns a fluent builder pre-populated from this URL and query parameters.
+	 *
+	 * @return URL/query parameter builder
+	 */
 	public Params<Url> builder() {
 		final String[] value = { raw };
 		Map<String, Entry> params = new LinkedHashMap<>(this.params);

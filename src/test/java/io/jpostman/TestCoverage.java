@@ -361,7 +361,23 @@ public class TestCoverage {
 		auth = Auth.from(JsonParser.parseString("{\"auth\":{\"type\":\"bearer\",\"bearer\":[{\"value\":\"tok\"}]}}")
 				.getAsJsonObject());
 		assertEquals(auth.toString(), "[bearer] {}");
-
+		
+		// v2.1 array: key absent → skipped
+		auth = Auth.from(JsonParser.parseString("{\"auth\":{\"type\":\"bearer\",\"bearer\":[{\"value\":\"{{TOKEN}}\"}]}}")
+				.getAsJsonObject());
+		assertEquals(auth.getRaw().toString(), "[{\"value\":\"{{TOKEN}}\"}]");
+		assertEquals(auth.params().toString(), "{TOKEN=}");
+		assertEquals(Params.resolve(auth.params(), Map.of("TOKEN", "abc")).toString(), "{TOKEN=abc}");
+		assertEquals(Params.resolve(auth.params(), null).toString(), "{}");
+		assertEquals(Params.resolve(null, Map.of("TOKEN", "abc")).toString(), "{}");
+		assertEquals(Params.resolve(auth.params(), Map.of("UNKNOWN", "abc")).toString(), "{TOKEN=}");
+		assertEquals(Params.addTokens(Map.of("TOKEN", "abc"), (String) null).toString(), "{}");
+		assertEquals(Params.addTokens(Map.of("TOKEN", "abc"), (Map<String,String>) null).toString(), "{}");
+		assertEquals(Params.addTokens(null, (String) null).toString(), "{}");
+		assertEquals(Params.addTokens(null, (Map<String,String>) null).toString(), "{}");
+		
+		//assertEquals(Params.addTokens(auth.params(), Map.of("UNKNOWN", "abc")).toString(), "{TOKEN=}");
+		
 		// v2.1 array: value absent → stored as ""
 		auth = Auth.from(JsonParser.parseString("{\"auth\":{\"type\":\"bearer\",\"bearer\":[{\"key\":\"token\"}]}}")
 				.getAsJsonObject());
@@ -480,16 +496,21 @@ public class TestCoverage {
 		// header object: disabled header is stored but skipped during request preparation
 		Collection col = Collection.load(JsonParser.parseString("{\"item\":[{\"name\":\"" + GET_AUTH_USER + "\","
 		                + "\"request\":{\"url\":{\"raw\":\"{{base_url}}\"},"
-		                + "\"header\":[{\"key\":\"Accept\",\"value\":\"application/json\",\"disabled\":true}]}}]}")
+		                + "\"header\":[{\"key\":\"Accept\",\"value\":\"application/json\",\"disabled\":true},{\"key\":\"appkey\",\"value\":\"{{API_KEY}}\"}]}}]}")
 		        		.getAsJsonObject());
 		Request template = col.getRequest(GET_AUTH_USER);
 		Request req = template.builder().build(env);
 		assertEquals(req.getHeader().get("unknonwn"), null);
 		assertEquals(req.getHeader().get("Accept"), null);
-		assertEquals(req.getHeader().toString(), "");
+		assertEquals(req.getHeader().toString(), "  appkey                              = \n");
 		req.getHeader().getParam("Accept").setEnabled(true); // enabled
 		assertEquals(req.getHeader().get("Accept"), "application/json");
-		assertEquals(req.getHeader().toString(), "  Accept                              = application/json\n");
+		assertEquals(req.getHeader().toString(), "  Accept                              = application/json\n"
+											   + "  appkey                              = \n");
+		assertEquals(template.getHeader().get("appkey"), "{{API_KEY}}");
+		assertEquals(template.getHeader().params().toString(), "{API_KEY=}");
+		assertEquals(req.getHeader().get("appkey"), "");
+		assertEquals(req.getHeader().params().toString(), "{}");
 	}
 
 	@Test(expectedExceptions = IllegalArgumentException.class,
@@ -530,6 +551,8 @@ public class TestCoverage {
 													      + "{{base_url}}/image/400x200/008080/ffffff?text=Hello World");
 		req = template.builder().url().set("text", "Hello World").end().build(env);
 		req.getUrl().print();
+		
+		assertEquals(url.params().toString(), "{base_url=}");
 		
 		url = new Url("http://example.com/products?id=25&&type=book&");
 	    assertEquals(url.getRaw(), "http://example.com/products");
@@ -725,21 +748,33 @@ public class TestCoverage {
 		// body builder: set existing username value
 		Body body = template.getBody().builder().set("username", TEST_USERNAME).end();
 		assertEquals(body.toString(),
-				"[raw/json] {\"username\":\"" + TEST_USERNAME + "\",\"password\":\"{{password}}\"}");
+				"[raw/json] {\n"
+				+ "  \"username\": \"TEST_USER\",\n"
+				+ "  \"password\": \"{{password}}\"\n"
+				+ "}");
 
 		// request builder: body set with env resolution
 		req = template.builder().body().set("username", TEST_USERNAME).end().build(env);
 		assertEquals(req.getBody().toString(),
-				"[raw/json] {\"username\":\"" + TEST_USERNAME + "\",\"password\":\"emilyspass\"}");
+				"[raw/json] {\n"
+				+ "  \"username\": \"TEST_USER\",\n"
+				+ "  \"password\": \"emilyspass\"\n"
+				+ "}");
 
 		// request builder: lambda body set with env resolution
 		req = template.builder().body(c -> c.set("username", TEST_USERNAME)).build(env);
 		assertEquals(req.getBody().toString(),
-				"[raw/json] {\"username\":\"" + TEST_USERNAME + "\",\"password\":\"emilyspass\"}");
+				"[raw/json] {\n"
+				+ "  \"username\": \"TEST_USER\",\n"
+				+ "  \"password\": \"emilyspass\"\n"
+				+ "}");
 
 		// body builder: original template remains unchanged
 		assertEquals(template.getBody().toString(),
-				"[raw/json] {\n\t\"username\": \"{{username}}\",\n\t\"password\": \"{{password}}\"\n}");
+				"[raw/json] {\n"
+				+ "  \"username\": \"{{username}}\",\n"
+				+ "  \"password\": \"{{password}}\"\n"
+				+ "}");
 	}
 
 	@Test
@@ -774,7 +809,7 @@ public class TestCoverage {
 
 		// raw mode: raw key absent → raw=""
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\"}}").getAsJsonObject());
-		assertEquals(body.toString(), "[raw] ");
+		assertEquals(body.toString(), "[raw] null");
 		assertEquals(body.getMode(), "raw");
 		assertEquals(body.getRaw(), "");
 		assertEquals(body.getParsed(), null);
@@ -794,13 +829,13 @@ public class TestCoverage {
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":{}}}")
 				.getAsJsonObject());
 		assertEquals(body.getLanguage(), "");
-		assertEquals(body.toString(), "[raw] hello");
+		assertEquals(body.toString(), "[raw] \"hello\"");
 		
 		// raw mode: options.raw exists but is not object → language defaults to ""
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":{\"raw\":\"json\"}}}")
 		        .getAsJsonObject());
 		assertEquals(body.getLanguage(), "");
-		assertEquals(body.toString(), "[raw] hello");
+		assertEquals(body.toString(), "[raw] \"hello\"");
 
 		// raw mode: options.raw exists but language absent → language=""
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":{\"raw\":{}}}}")
@@ -975,6 +1010,10 @@ public class TestCoverage {
 	            .getAsJsonObject());
 	    resolved = body.builder().map("username", "emmy", (Object[]) null);
 	    assertEquals(resolved.getRaw(), "{\"username\":\"emmy\"}");
+
+		assertEquals(body.params().toString(), "{username=}");
+		assertEquals(env.resolve(body.params()).toString(), "{username=emilys}");
+		assertEquals(env.resolve(null).toString(), "{}");
 	}
 	
 	@Test(expectedExceptions = IllegalArgumentException.class,
@@ -1129,8 +1168,11 @@ public class TestCoverage {
 		// body builder: add creates new key on cloned JSON object body
 		Body body = template.getBody().builder().add("NEW_KEY", TEST_USERNAME).end();
 		assertEquals(body.toString(),
-				"[raw/json] {\"username\":\"{{username}}\",\"password\":\"{{password}}\",\"NEW_KEY\":\""
-						+ TEST_USERNAME + "\"}");
+				"[raw/json] {\n"
+				+ "  \"username\": \"{{username}}\",\n"
+				+ "  \"password\": \"{{password}}\",\n"
+				+ "  \"NEW_KEY\": \"TEST_USER\"\n"
+				+ "}");
 
 		// body builder: set missing key on original body → throws
 		template.getBody().builder().set("NEW_KEY", TEST_USERNAME).end();
@@ -1322,6 +1364,51 @@ public class TestCoverage {
 		assertEquals(req.getDescription(), "");
 	}
 	
+	@Test
+	public void testRequestParamsReturnsHandlebarsTokensWithEmptyValues() throws Exception {
+		Collection col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"Tokens\",\"request\":{\"method\":\"POST\","
+						+ "\"url\":{\"raw\":\"{{base_url}}/users/{{user_id}}?q={{query}}\","
+						+ "\"query\":[{\"key\":\"q\",\"value\":\"{{query}}\"}]},"
+						+ "\"header\":[{\"key\":\"X-Trace\",\"value\":\"{{trace_id}}\"}],"
+						+ "\"auth\":{\"type\":\"bearer\",\"bearer\":[{\"key\":\"token\",\"value\":\"{{token}}\"}]},"
+						+ "\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"username\\\":\\\"{{username}}\\\"}\","
+						+ "\"options\":{\"raw\":{\"language\":\"json\"}}}}}]}")
+				.getAsJsonObject());
+
+		Map<String, String> params = col.getRequest("Tokens").params();
+
+		assertEquals(params, Map.of(
+				"base_url", "",
+				"user_id", "",
+				"query", "",
+				"trace_id", "",
+				"token", "",
+				"username", ""));
+	}
+
+	@Test
+	public void testRequestResolveFillsMatchingEnvironmentValuesOnly() throws Exception {
+		Collection col = Collection.load(JsonParser.parseString(
+				"{\"item\":[{\"name\":\"Resolve Tokens\",\"request\":{"
+						+ "\"url\":{\"raw\":\"{{base_url}}/users/{{missing_id}}\"},"
+						+ "\"header\":[{\"key\":\"X-Trace\",\"value\":\"{{trace_id}}\"}]}}]}")
+				.getAsJsonObject());
+		Environment env = new Environment("Env").builder()
+				.add("base_url", "https://api.example.com")
+				.add("trace_id", "abc-123")
+				.end(null);
+		
+		Request req = col.getRequest("Resolve Tokens");
+
+		Map<String, String> resolved = req.resolve(env);
+		assertEquals(resolved.get("base_url"), "https://api.example.com");
+		assertEquals(resolved.get("trace_id"), "abc-123");
+		assertEquals(resolved.get("missing_id"), "");
+		
+		assertEquals(req.resolve(null).toString(), "{base_url=, missing_id=, trace_id=}");
+	}
+
 	private Request request(String method) throws IOException {
 		String url = env.get("base_url");
 	    return Collection.load(JsonParser.parseString(
