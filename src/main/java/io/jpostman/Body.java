@@ -279,25 +279,26 @@ public class Body {
     }
     
     /**
-     * Returns the body formatted for debug output. JSON bodies are pretty-printed;
-     * JSON string primitives are unwrapped so XML or JSON stored as a string is
-     * displayed without extra quotes. Non-JSON body text is returned unchanged.
+     * Returns the body formatted for display.
+     * <p>
+     * JSON objects and arrays are returned as pretty-printed JSON. JSON string
+     * primitives are returned as plain text without JSON quotes. If the body could
+     * not be parsed, the original raw body is returned.
      *
      * @return formatted body text
      */
     public String format() {
         JsonElement parsed = getParsed();
+
         if (parsed == null) {
             return raw;
         }
-        if (parsed.isJsonPrimitive() && parsed.getAsJsonPrimitive().isString()) {
-            String text = parsed.getAsString();
-            JsonElement inner = tryParseJson(text);
-            if (inner != null && (inner.isJsonObject() || inner.isJsonArray())) {
-                return PRETTY_GSON.toJson(inner);
-            }
-            return text;
+
+        if (parsed.isJsonPrimitive() && 
+        		parsed.getAsJsonPrimitive().isString()) {
+            return parsed.getAsString();
         }
+
         return PRETTY_GSON.toJson(parsed);
     }
 

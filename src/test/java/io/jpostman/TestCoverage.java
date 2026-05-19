@@ -809,7 +809,7 @@ public class TestCoverage {
 
 		// raw mode: raw key absent → raw=""
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\"}}").getAsJsonObject());
-		assertEquals(body.toString(), "[raw] null");
+		assertEquals(body.toString(), "[raw] ");
 		assertEquals(body.getMode(), "raw");
 		assertEquals(body.getRaw(), "");
 		assertEquals(body.getParsed(), null);
@@ -829,13 +829,13 @@ public class TestCoverage {
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":{}}}")
 				.getAsJsonObject());
 		assertEquals(body.getLanguage(), "");
-		assertEquals(body.toString(), "[raw] \"hello\"");
+		assertEquals(body.toString(), "[raw] hello");
 		
 		// raw mode: options.raw exists but is not object → language defaults to ""
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":{\"raw\":\"json\"}}}")
 		        .getAsJsonObject());
 		assertEquals(body.getLanguage(), "");
-		assertEquals(body.toString(), "[raw] \"hello\"");
+		assertEquals(body.toString(), "[raw] hello");
 
 		// raw mode: options.raw exists but language absent → language=""
 		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"hello\",\"options\":{\"raw\":{}}}}")
@@ -985,6 +985,16 @@ public class TestCoverage {
 				Map.of("USER_ID", "42")), "<id>42</id><missing></missing>");
 		assertEquals(Params.substituteVars("<id>{{UNKNOWN_ID}</id>", Map.of("USER_ID", "42")),
 				"<id>{{UNKNOWN_ID}</id>");
+		
+		// format: quoted JSON string body is returned without JSON quotes.
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"\\\"<id>42</id>\\\"\","
+		                + "\"options\":{\"raw\":{\"language\":\"json\"}}}}").getAsJsonObject());
+		assertEquals(body.format(), "<id>42</id>");
+
+		// format: non-string JSON primitive is formatted by Gson.
+		body = Body.from(JsonParser.parseString("{\"body\":{\"mode\":\"raw\",\"raw\":\"true\","
+		                + "\"options\":{\"raw\":{\"language\":\"json\"}}}}").getAsJsonObject());
+		assertEquals(body.format(), "true");
 
 		body = Body.from(JsonParser.parseString(
 				"{\"body\":{\"mode\":\"raw\",\"raw\":\"{\\\"id\\\":\\\"{{UNKNOWN_ID}}\\\"}\",\"options\":{\"raw\":{\"language\":\"json\"}}}}")
@@ -1106,6 +1116,14 @@ public class TestCoverage {
 				.build();
 
 		assertEquals(req.getBody().getRaw(), "{\"username\":\"emmy\",\"single\":\"true\",\"age\":\"25\",\"note\":\"age=10\"}");
+		
+		assertEquals(req.builder().build(null).toDebugString(), "[POST  ] Primitive Body                           -> \n"
+				+ "Body: [raw/json] {\n"
+				+ "  \"username\": \"emmy\",\n"
+				+ "  \"single\": \"true\",\n"
+				+ "  \"age\": \"25\",\n"
+				+ "  \"note\": \"age=10\"\n"
+				+ "}");
 	}
 
 	@Test
