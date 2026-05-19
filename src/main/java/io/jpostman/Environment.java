@@ -62,16 +62,27 @@ public class Environment {
 	public Entry getParam(String key) {
 		return params.get(key);
 	}
+	
+	/**
+	 * Returns the stored value for a key, even when the entry is disabled.
+	 *
+	 * @param key parameter name
+	 * @return stored value, or {@code null} when absent
+	 */
+	public String raw(String key) {
+	    Entry info = getParam(key);
+	    return info != null ? info.value : null;
+	}
 
 	/**
-	 * Looks up an enabled variable by key.
+	 * Returns the enabled value for a key.
 	 *
-	 * @param key variable name
-	 * @return variable value, or {@code null} when absent or disabled
+	 * @param key parameter name
+	 * @return value when present and enabled; otherwise {@code null}
 	 */
 	public String get(String key) {
-		Entry info = getParam(key);
-		return info != null && info.enabled ? info.value : null;
+	    Entry info = getParam(key);
+	    return info != null && info.enabled ? info.value : null;
 	}
 
 	/** Returns a {@link Params} pre-populated from this environment. */

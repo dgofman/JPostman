@@ -85,14 +85,19 @@ public class TestCoverage {
 		env.print();
 		
 		// environment values: enabled=true → initially active; disabling removes from active params view
-		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\", \"value\":\"v\",\"enabled\":true}]}").getAsJsonObject());
-		assertEquals(env.getParams().size(), 1);		
+		env = Environment.load(JsonParser.parseString("{\"values\":[{\"key\":\"apikey\", \"value\":\"v\",\"enabled\":true}]}").getAsJsonObject());	
+		assertEquals(env.get("unknown"), null);
+		assertEquals(env.raw("unknown"), null);
 		assertEquals(env.getParam("apikey").isEnabled(), true);
 		assertEquals(env.getParam("apikey").getValue(), "v");
+		
+		assertEquals(env.getParams().size(), 1);
+		assertEquals(env.get("apikey"), "v");
+		assertEquals(env.raw("apikey"), "v");
 		env.getParam("apikey").setEnabled(false);
 		assertEquals(env.getParams().size(), 0);
-		assertEquals(env.get("unknown"), null);
 		assertEquals(env.get("apikey"), null);
+		assertEquals(env.raw("apikey"), "v");
 		assertEquals(env.getParam("apikey").toString(), "value=v, enabled=false");
 		
 		

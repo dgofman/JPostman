@@ -22,7 +22,7 @@ Instead of copying request URLs, headers, authentication, query parameters, and 
 <dependency>
     <groupId>io.github.dgofman</groupId>
     <artifactId>jpostman</artifactId>
-    <version>1.3.1</version> <!-- replace with latest Maven Central version -->
+    <version>1.3.2</version> <!-- replace with latest Maven Central version -->
 </dependency>
 ```
 
@@ -384,6 +384,42 @@ Use `map(...)`.
 
 Use `json(...)`.
 
+### Reusable Variable Maps
+
+Use `Params.asMap(...)` and `Params.asJson(...)` when you want reusable local variables without Java's `Map.of(...)` entry limit.
+
+```java
+Map<String, Object> params = Params.asMap("key", "value");
+```
+
+Result:
+
+```text
+{key=value}
+```
+
+Use `Params.asJson(...)` for unquoted raw JSON placeholders. String values are JSON-stringified; numbers, booleans, nulls, lists, and maps remain normal objects.
+
+```java
+Map<String, Object> params = Params.asJson("key", "value");
+```
+
+Result:
+
+```text
+{key="value"}
+```
+
+Example usage:
+
+```java
+Request req = template.builder()
+        .body()
+            .json("username", "emmy")
+        .end(Params.asJson("age", 25, "single", true))
+        .build(env);
+```
+
 ---
 
 ## Advanced Login Example
@@ -433,6 +469,23 @@ Example final body:
 }
 ```
 
+---
+
+## Enabled vs Raw Parameter Values
+
+Most request builders use enabled values only. Disabled Postman entries are preserved, but they are skipped during normal request preparation.
+
+Use `get(...)` when you want the active value only:
+
+```java
+String token = env.get("accessToken");
+```
+
+Use `raw(...)` when you want the stored value even if the entry is disabled:
+
+```java
+String token = env.raw("accessToken");
+```
 ---
 
 ## Environment Overrides
@@ -519,3 +572,6 @@ Recommended usage:
 - Use `.body(...)` for JSON body field mutation.
 - Use `.map(...)` for normal local token replacement.
 - Use `.json(...)` for unquoted raw JSON placeholders that need JSON-safe string values.
+- Use `.get(key)` for enabled values and `.raw(key)` when disabled values should also be readable.
+- Use `Params.asMap(...)` / `Params.asJson(...)` for reusable variable maps without `Map.of(...)` limits.
+
