@@ -8,7 +8,7 @@
 ![Coverage](https://codecov.io/gh/dgofman/JPostman/branch/main/graph/badge.svg)
 ![License](https://img.shields.io/github/license/dgofman/JPostman)
 
-<a href="https://repo1.maven.org/maven2/io/github/dgofman/jpostman/"><img src="logo.png" width="100"></a>
+<a href="https://www.youtube.com/@JPostmanAPI"><img src="logo.png" width="100"></a>
 
 **JPostman** is a lightweight Java helper library that reuses exported **Postman collections** and **Postman environments** directly in Java and Rest Assured API tests.
 
