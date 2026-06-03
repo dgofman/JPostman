@@ -55,8 +55,8 @@ src/main/resources/DummyJSON.postman_environment.json
 
 Watch this short video showing how to export a Postman collection and environment:
 
-<a href="https://www.youtube.com/watch?v=u3Z9yjglmTs" target="_blank">
-  <img src="https://img.youtube.com/vi/u3Z9yjglmTs/maxresdefault.jpg" alt="Export Postman collection and environment" width="640">
+<a href="https://www.youtube.com/watch?v=UxFjeONEq60" target="_blank">
+  <img src="https://img.youtube.com/vi/UxFjeONEq60/maxresdefault.jpg" alt="Export Postman collection and environment" width="640">
 </a>
 
 JPostmanApi: https://www.youtube.com/@JPostmanApi
