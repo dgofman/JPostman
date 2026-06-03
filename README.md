@@ -50,11 +50,17 @@ Export your Postman collection and environment, then place them under project re
 src/main/resources/DummyJSON.postman_collection.json
 src/main/resources/DummyJSON.postman_environment.json
 ```
-### Export Collection
-![Postman collection export](collections.png)
 
-### Export Environment
-![Postman environment export](environments.png)
+### Export Postman Collection and Environment
+
+Watch this short video showing how to export a Postman collection and environment:
+
+<a href="https://www.youtube.com/watch?v=u3Z9yjglmTs" target="_blank">
+  <img src="https://img.youtube.com/vi/u3Z9yjglmTs/maxresdefault.jpg" alt="Export Postman collection and environment" width="640">
+</a>
+
+JPostmanApi: https://www.youtube.com/@JPostmanApi
+
 ---
 
 ## Supported Request Parts
