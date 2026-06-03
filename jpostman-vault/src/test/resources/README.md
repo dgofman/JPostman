@@ -248,6 +248,7 @@ docker exec -it --user root local-vault sh
 export VAULT_ADDR=http://127.0.0.1:8200
 export VAULT_TOKEN=root
 vault auth list
+vault secrets list
 ```
 
 ---
@@ -263,12 +264,7 @@ mvn clean test -Dtest=VaultClientFactoryTest
 Run one test:
 
 ```bash
-mvn clean test -Dtest=VaultClientFactoryTest#shouldLoginWithUserPass
-mvn clean test -Dtest=VaultClientFactoryTest#shouldLoginWithAppRole
-mvn clean test -Dtest=VaultClientFactoryTest#shouldLoginWithJwt
-mvn clean test -Dtest=VaultClientFactoryTest#shouldLoginWithGithub
-mvn clean test -Dtest=VaultClientFactoryTest#shouldLoginWithLdap
-mvn clean test -Dtest=VaultClientFactoryTest#canAuthenticateAndReadKv2Secret
+mvn clean test -Dtest=VaultClientFactoryTest#shouldLoginWithCustomVaultAuthenticator
 ```
 
 ---

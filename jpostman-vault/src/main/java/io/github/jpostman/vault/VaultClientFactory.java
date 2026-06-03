@@ -28,7 +28,7 @@ public class VaultClientFactory {
      * @param authenticator authenticator strategy to use for all created Vault clients
      * @throws NullPointerException if {@code authenticator} is {@code null}
      */
-    public VaultClientFactory(VaultAuthenticator authenticator) {
+	public VaultClientFactory(VaultAuthenticator authenticator) {
         this.authenticator = Objects.requireNonNull(authenticator, "authenticator");
     }
 

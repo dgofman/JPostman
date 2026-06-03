@@ -33,15 +33,11 @@ vault status
 
 print_section "Creating developer policy"
 vault policy write developer - <<'POLICY'
-path "secret/data/dev/*" {
-  capabilities = ["create", "update", "read"]
+path "secret/data/*" {
+  capabilities = ["create", "update", "read", "delete"]
 }
 
-path "secret/metadata/dev" {
-  capabilities = ["list"]
-}
-
-path "secret/metadata/dev/*" {
+path "secret/metadata/*" {
   capabilities = ["list", "read"]
 }
 POLICY

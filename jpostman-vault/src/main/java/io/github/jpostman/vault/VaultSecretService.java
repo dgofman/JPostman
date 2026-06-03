@@ -8,112 +8,202 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Service for reading and writing Vault key/value secrets with an authenticated Vault client.
+ * Service for reading and writing Vault key/value secrets with an authenticated
+ * Vault client.
  *
- * <p>This class intentionally stays separate from authentication. {@link VaultClientFactory}
- * creates the authenticated client; this service uses that client to access secrets.</p>
+ * <p>
+ * This class intentionally stays separate from authentication.
+ * {@link VaultClientFactory} creates the authenticated client; this service
+ * uses that client to access secrets.
+ * </p>
  */
 public class VaultSecretService {
 
-    private final Vault vault;
+	private final Vault vault;
 
-    /**
-     * Creates a secret service using an authenticated Vault client.
-     *
-     * @param vault authenticated Vault client
-     * @throws NullPointerException if {@code vault} is {@code null}
-     */
-    public VaultSecretService(Vault vault) {
-        this.vault = Objects.requireNonNull(vault, "vault");
-    }
+	/**
+	 * Creates a secret service using an authenticated Vault client.
+	 *
+	 * @param vault authenticated Vault client
+	 */
+	public VaultSecretService(Vault vault) {
+		this.vault = Objects.requireNonNull(vault, "vault");
+	}
 
-    /**
-     * Reads a Vault secret path and returns its key/value data.
-     *
-     * <p>For the JOpenLibs Vault driver used here, the configured KV engine version is handled by
-     * the driver. For a KV v2 mount named {@code secret}, callers can use a logical path such as
-     * {@code secret/dev/myapp}.</p>
-     *
-     * @param path Vault logical secret path
-     * @return secret data as string key/value pairs
-     * @throws Exception if Vault returns an error or the path cannot be read
-     */
-    public Map<String, String> read(String path) throws Exception {
-        LogicalResponse response = vault.logical().read(path);
-        return response.getData();
-    }
+	/**
+	 * Reads a Vault logical path.
+	 *
+	 * @param path Vault logical path, for example "secret/dev/myapp"
+	 * @return secret data
+	 * @throws Exception if the path cannot be read
+	 */
+	public Map<String, String> read(String path) throws Exception {
+		LogicalResponse response = vault.logical().read(path);
+		return response.getData();
+	}
 
-    /**
-     * Reads a secret from a KV v2 mount using separate mount and secret path values.
-     *
-     * <p>Example: {@code readKv2("secret", "dev/myapp")} reads {@code secret/dev/myapp}.</p>
-     *
-     * @param mount KV mount name, for example {@code secret}
-     * @param secretPath secret path under the mount, for example {@code dev/myapp}
-     * @return secret data as string key/value pairs
-     * @throws Exception if Vault returns an error or the path cannot be read
-     */
-    public Map<String, String> readKv2(String mount, String secretPath) throws Exception {
-        return read(join(mount, secretPath));
-    }
+	/**
+	 * Reads a secret from a KV mount.
+	 *
+	 * @param mount      KV mount name, for example "secret"
+	 * @param secretPath secret path under the mount, for example "dev/myapp"
+	 * @return secret data
+	 * @throws Exception if the path cannot be read
+	 */
+	public Map<String, String> readKv2(String mount, String secretPath) throws Exception {
+		return read(join(mount, secretPath));
+	}
 
-    /**
-     * Reads one required value from a Vault secret.
-     *
-     * @param path Vault logical secret path
-     * @param key key to read from the secret data
-     * @return value for the requested key
-     * @throws Exception if Vault returns an error or the path cannot be read
-     * @throws IllegalArgumentException if the requested key is missing from the secret data
-     */
-    public String readRequiredValue(String path, String key) throws Exception {
-        Map<String, String> data = read(path);
-        String value = data.get(key);
-        if (value == null) {
-            throw new IllegalArgumentException("Vault secret key not found. path=" + path + ", key=" + key);
-        }
-        return value;
-    }
+	/**
+	 * Reads one required value from a Vault secret.
+	 *
+	 * @param path Vault logical path
+	 * @param key  key to read
+	 * @return value for the requested key
+	 * @throws Exception if the path cannot be read
+	 */
+	public String readRequiredValue(String path, String key) throws Exception {
+		Map<String, String> data = read(path);
+		String value = data.get(key);
 
-    /**
-     * Writes key/value pairs to a Vault logical path.
-     *
-     * <p>This is mainly useful for local tests and setup utilities. Production application code
-     * usually reads secrets rather than writing them.</p>
-     *
-     * @param path Vault logical path to write
-     * @param values key/value pairs to write
-     * @throws Exception if Vault returns an error or the path cannot be written
-     */
-    public void write(String path, Map<String, String> values) throws Exception {
-        Map<String, Object> objectValues = new HashMap<>();
-        objectValues.putAll(values);
-        vault.logical().write(path, objectValues);
-    }
+		if (value == null) {
+			throw new IllegalArgumentException("Vault secret key not found. path=" + path + ", key=" + key);
+		}
 
-    /**
-     * Joins two Vault path fragments using exactly one slash.
-     *
-     * @param left first path fragment
-     * @param right second path fragment
-     * @return joined path
-     */
-    private static String join(String left, String right) {
-        String a = trimSlashes(left);
-        String b = trimSlashes(right);
-        return a + "/" + b;
-    }
+		return value;
+	}
 
-    /**
-     * Removes leading and trailing slashes from a path fragment.
-     *
-     * @param value path fragment to normalize
-     * @return normalized path fragment, or an empty string when {@code value} is {@code null}
-     */
-    private static String trimSlashes(String value) {
-        if (value == null) {
-            return "";
-        }
-        return value.replaceAll("^/+", "").replaceAll("/+$", "");
-    }
+	/**
+	 * Writes key/value pairs to a Vault logical path.
+	 *
+	 * @param path   Vault logical path, for example "secret/dev/myapp"
+	 * @param values key/value pairs to write
+	 * @throws Exception if the path cannot be written
+	 */
+	public void write(String path, Map<String, String> values) throws Exception {
+		Map<String, Object> objectValues = new HashMap<>();
+		objectValues.putAll(values);
+
+		vault.logical().write(path, objectValues);
+	}
+
+	/**
+	 * Writes a secret to a KV mount.
+	 *
+	 * @param mount      KV mount name, for example "secret"
+	 * @param secretPath secret path under the mount, for example "dev/myapp"
+	 * @param values     key/value pairs to write
+	 * @throws Exception if the path cannot be written
+	 */
+	public void writeKv2(String mount, String secretPath, Map<String, String> values) throws Exception {
+		write(join(mount, secretPath), values);
+	}
+
+	/**
+	 * Deletes a Vault logical path.
+	 *
+	 * @param path Vault logical path, for example "secret/dev/myapp"
+	 * @throws Exception if the path cannot be deleted
+	 */
+	public void delete(String path) throws Exception {
+		vault.logical().delete(path);
+	}
+
+	/**
+	 * Deletes a secret from a KV mount.
+	 *
+	 * @param mount      KV mount name, for example "secret"
+	 * @param secretPath secret path under the mount, for example "dev/myapp"
+	 * @throws Exception if the path cannot be deleted
+	 */
+	public void deleteKv2(String mount, String secretPath) throws Exception {
+		delete(join(mount, secretPath));
+	}
+
+	/**
+	 * Deletes one key from a KV secret.
+	 *
+	 * If the key is the last value, the whole secret path is deleted.
+	 *
+	 * @param mount      KV mount name, for example "secret"
+	 * @param secretPath secret path under the mount, for example "dev/myapp"
+	 * @param key        key to remove
+	 * @throws Exception if the secret cannot be read, written, or deleted
+	 */
+	public void deleteKv2Key(String mount, String secretPath, String key) throws Exception {
+		Map<String, String> data = readKv2(mount, secretPath);
+		if (data == null || !data.containsKey(key)) {
+			return;
+		}
+		data.remove(key);
+		writeKv2(mount, secretPath, data);
+	}
+
+	/**
+	 * Reads a Vault secret that contains a shell script value and extracts exported
+	 * variables.
+	 *
+	 * Example script value: export KEY1=VALUE1 export KEY2=VALUE2
+	 *
+	 * @param mount      KV mount name, for example "secret"
+	 * @param secretPath secret path under the mount, for example "dev/myapp"
+	 * @return exported shell variables as key/value pairs
+	 * @throws Exception if the secret cannot be read
+	 */
+	public Map<String, String> readShellValues(String mount, String secretPath) throws Exception {
+		Map<String, String> data = readKv2(mount, secretPath);
+		if (data == null || data.isEmpty()) {
+			return new HashMap<>();
+		}
+		String script = data.get("script");
+		if (script == null || script.trim().isEmpty()) {
+			return new HashMap<>();
+		}
+		return parseShellExports(script);
+	}
+
+	/**
+	 * Parses simple shell export lines.
+	 */
+	private static Map<String, String> parseShellExports(String script) {
+		Map<String, String> values = new HashMap<>();
+		String[] lines = script.split("\\R");
+		for (String line : lines) {
+			String trimmedLine = line.trim();
+			if (trimmedLine.isEmpty() || trimmedLine.startsWith("#")) {
+				continue;
+			}
+			if (!trimmedLine.startsWith("export ")) {
+				continue;
+			}
+			String assignment = trimmedLine.substring("export ".length()).trim();
+			int equalsIndex = assignment.indexOf('=');
+			if (equalsIndex <= 0) {
+				continue;
+			}
+			String key = assignment.substring(0, equalsIndex).trim();
+			String value = assignment.substring(equalsIndex + 1).trim();
+			values.put(key, value);
+		}
+		return values;
+	}
+
+	/**
+	 * Joins two Vault path fragments using one slash.
+	 */
+	private static String join(String left, String right) {
+		String a = trimSlashes(left);
+		String b = trimSlashes(right);
+		return a + "/" + b;
+	}
+
+	/**
+	 * Removes leading and trailing slashes.
+	 */
+	private static String trimSlashes(String value) {
+		if (value == null) {
+			return "";
+		}
+		return value.replaceAll("^/+", "").replaceAll("/+$", "");
+	}
 }
