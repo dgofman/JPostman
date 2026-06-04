@@ -15,17 +15,25 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import io.github.jopenlibs.vault.Vault;
+import io.github.jopenlibs.vault.VaultConfig;
 import io.github.jopenlibs.vault.response.LookupResponse;
 
 public class VaultClientFactoryTest {
 
-	private static final String DEFAULT_VAULT_ADDR = "http://127.0.0.1:8200";
 	private static final String DEFAULT_KV_MOUNT = "secret";
 	private static final String DEFAULT_SECRET_PATH = "dev/myapp";
 
 	private final VaultClientFactory vaultClientFactory = new VaultClientFactory();
 
+	private final String address;
+	private final String namespace;
+
 	private Properties vaultProperties;
+
+	public VaultClientFactoryTest() {
+		address = optionalProperty("VAULT_ADDR", "http://127.0.0.1:8200");
+		namespace = optionalProperty("VAULT_NAMESPACE", null);
+	}
 
 	@BeforeClass
 	public void loadProperties() throws Exception {
@@ -72,21 +80,22 @@ public class VaultClientFactoryTest {
 	@Test
 	public void shouldLoginWithToken() throws Exception {
 		requirePropertyOrSkip("VAULT_TOKEN");
-
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "token",
-				null);
+		VaultSettings settings = new VaultSettings(address, namespace, "token", null);
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
 		assertValidVaultLogin(vault);
+		assertEquals(settings.authToken(), settings.get("VAULT_TOKEN"));
 	}
 
 	@Test
-	public void shouldLoginWithCustomVaultAuthenticator() throws Exception {
-		requirePropertyOrSkip("VAULT_TOKEN");
-
-		VaultAuthenticator customAuthenticator = settings -> new DefaultVaultAuthenticator().authenticate(settings);
+	public void shouldLoginWithCustomVaultTokenAuthenticator() throws Exception {
+		VaultAuthenticator customAuthenticator = new DefaultVaultAuthenticator() {
+			@Override
+			protected Vault authenticateWithToken(VaultConfig config, VaultSettings settings) throws Exception {
+				return authenticateWithToken(config, settings.get("VAULT_TOKEN"));
+			}
+		};
 		VaultClientFactory customFactory = new VaultClientFactory(customAuthenticator);
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "token",
-				null);
+		VaultSettings settings = new VaultSettings(address, namespace, "token");
 		Vault vault = customFactory.createVaultWithAuth(settings);
 		assertValidVaultLogin(vault);
 	}
@@ -96,9 +105,24 @@ public class VaultClientFactoryTest {
 		requirePropertyOrSkip("VAULT_USERNAME");
 		requirePropertyOrSkip("VAULT_PASSWORD");
 
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "userpass",
+		VaultSettings settings = new VaultSettings(address, namespace, "userpass",
 				optionalProperty("VAULT_AUTH_PATH", "userpass"));
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
+		assertValidVaultLogin(vault);
+	}
+
+	@Test
+	public void shouldLoginWithCustomVaultUserPassAuthenticator() throws Exception {
+		VaultAuthenticator customAuthenticator = new DefaultVaultAuthenticator() {
+			@Override
+			protected Vault authenticateWithUserPass(VaultConfig config, VaultSettings settings, Vault vault,
+					String mount) throws Exception {
+				return authenticateWithUserPass(config, vault, mount, "testuser", "testpass");
+			}
+		};
+		VaultClientFactory customFactory = new VaultClientFactory(customAuthenticator);
+		VaultSettings settings = new VaultSettings(address, namespace, "userpass");
+		Vault vault = customFactory.createVaultWithAuth(settings);
 		assertValidVaultLogin(vault);
 	}
 
@@ -106,10 +130,25 @@ public class VaultClientFactoryTest {
 	public void shouldLoginWithAppRole() throws Exception {
 		requirePropertyOrSkip("VAULT_ROLE_ID");
 		requirePropertyOrSkip("VAULT_SECRET_ID");
-
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "approle",
+		VaultSettings settings = new VaultSettings(address, namespace, "approle",
 				optionalProperty("VAULT_APPROLE_AUTH_PATH", "approle"));
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
+		assertValidVaultLogin(vault);
+	}
+
+	@Test
+	public void shouldLoginWithCustomVaultAppRoleAuthenticator() throws Exception {
+		VaultAuthenticator customAuthenticator = new DefaultVaultAuthenticator() {
+			@Override
+			protected Vault authenticateWithAppRole(VaultConfig config, VaultSettings settings, Vault vault,
+					String mount) throws Exception {
+				return authenticateWithAppRole(config, vault, mount, settings.get("VAULT_ROLE_ID"),
+						settings.get("VAULT_SECRET_ID"));
+			}
+		};
+		VaultClientFactory customFactory = new VaultClientFactory(customAuthenticator);
+		VaultSettings settings = new VaultSettings(address, namespace, "approle");
+		Vault vault = customFactory.createVaultWithAuth(settings);
 		assertValidVaultLogin(vault);
 	}
 
@@ -118,9 +157,24 @@ public class VaultClientFactoryTest {
 		requirePropertyOrSkip("VAULT_JWT_ROLE");
 		requirePropertyOrSkip("VAULT_JWT");
 
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "jwt",
+		VaultSettings settings = new VaultSettings(address, namespace, "jwt",
 				optionalProperty("VAULT_JWT_AUTH_PATH", "jwt"));
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
+		assertValidVaultLogin(vault);
+	}
+
+	@Test
+	public void shouldLoginWithCustomVaultJwtAuthenticator() throws Exception {
+		VaultAuthenticator customAuthenticator = new DefaultVaultAuthenticator() {
+			@Override
+			protected Vault authenticateWithJwt(VaultConfig config, VaultSettings settings, Vault vault, String mount)
+					throws Exception {
+				return authenticateWithJwt(config, vault, mount, "my-jwt-role", settings.get("VAULT_JWT"));
+			}
+		};
+		VaultClientFactory customFactory = new VaultClientFactory(customAuthenticator);
+		VaultSettings settings = new VaultSettings(address, namespace, "jwt");
+		Vault vault = customFactory.createVaultWithAuth(settings);
 		assertValidVaultLogin(vault);
 	}
 
@@ -128,9 +182,24 @@ public class VaultClientFactoryTest {
 	public void shouldLoginWithGithub() throws Exception {
 		requirePropertyOrSkip("VAULT_GITHUB_TOKEN");
 
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "github",
+		VaultSettings settings = new VaultSettings(address, namespace, "github",
 				optionalProperty("VAULT_GITHUB_AUTH_PATH", "github"));
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
+		assertValidVaultLogin(vault);
+	}
+
+	@Test
+	public void shouldLoginWithCustomVaultGithubAuthenticator() throws Exception {
+		VaultAuthenticator customAuthenticator = new DefaultVaultAuthenticator() {
+			@Override
+			protected Vault authenticateWithGithub(VaultConfig config, VaultSettings settings, Vault vault,
+					String mount) throws Exception {
+				return authenticateWithGithub(config, vault, mount, settings.get("VAULT_GITHUB_TOKEN"));
+			}
+		};
+		VaultClientFactory customFactory = new VaultClientFactory(customAuthenticator);
+		VaultSettings settings = new VaultSettings(address, namespace, "github");
+		Vault vault = customFactory.createVaultWithAuth(settings);
 		assertValidVaultLogin(vault);
 	}
 
@@ -139,16 +208,38 @@ public class VaultClientFactoryTest {
 		requirePropertyOrSkip("VAULT_LDAP_USERNAME");
 		requirePropertyOrSkip("VAULT_LDAP_PASSWORD");
 
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "ldap",
+		VaultSettings settings = new VaultSettings(address, namespace, "ldap",
 				optionalProperty("VAULT_LDAP_AUTH_PATH", "ldap"));
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
+		assertValidVaultLogin(vault);
+		
+		// Lookup
+		LookupResponse response = vault.auth().lookupSelf();
+		assertEquals(response.getDisplayName(), "ldap-testuser");
+		assertEquals(response.isRenewable(), true);
+		
+		// Renew Token
+		assertEquals(settings.authToken(), vault.auth().renewSelf().getAuthClientToken());
+	}
+
+	@Test
+	public void shouldLoginWithCustomVaultLdapAuthenticator() throws Exception {
+		VaultAuthenticator customAuthenticator = new DefaultVaultAuthenticator() {
+			@Override
+			protected Vault authenticateWithLdap(VaultConfig config, VaultSettings settings, Vault vault, String mount)
+					throws Exception {
+				return authenticateWithLdap(config, vault, mount, "testuser", "testpass");
+			}
+		};
+		VaultClientFactory customFactory = new VaultClientFactory(customAuthenticator);
+		VaultSettings settings = new VaultSettings(address, namespace, "github");
+		Vault vault = customFactory.createVaultWithAuth(settings);
 		assertValidVaultLogin(vault);
 	}
 
 	@Test
 	public void shouldRejectUnsupportedAuthMethod() {
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null,
-				"invalid-auth", null);
+		VaultSettings settings = new VaultSettings(address, namespace, "invalid-auth");
 
 		try {
 			vaultClientFactory.createVaultWithAuth(settings);
@@ -159,6 +250,8 @@ public class VaultClientFactoryTest {
 		} catch (Exception e) {
 			fail("Expected IllegalArgumentException but got: " + e.getClass().getName(), e);
 		}
+		
+		assertEquals(settings.authToken(), null);
 	}
 
 	@Test
@@ -166,11 +259,16 @@ public class VaultClientFactoryTest {
 		String mount = optionalProperty("VAULT_KV_MOUNT", DEFAULT_KV_MOUNT);
 		String path = optionalProperty("VAULT_SECRET_PATH", DEFAULT_SECRET_PATH);
 
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "token",
-				null);
+		VaultSettings settings = new VaultSettings(address, namespace, "token");
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
 		VaultSecretService service = new VaultSecretService(vault);
-		Map<String, String> data = service.readKv2(mount, path);
+
+		assertEquals(service.readKv2Secret(mount, path, "username"), "testuser",
+				"Unexpected username from Vault secret");
+		assertEquals(service.readKv2Secret(mount, path, "password"), "testpass",
+				"Unexpected password from Vault secret");
+
+		Map<String, String> data = service.readKv2Secret(mount, path);
 		assertNotNull(data, "Vault secret data should not be null");
 		assertEquals(data.get("username"), "testuser", "Unexpected username from Vault secret");
 		assertEquals(data.get("password"), "testpass", "Unexpected password from Vault secret");
@@ -183,59 +281,55 @@ public class VaultClientFactoryTest {
 		String key = "version";
 		String value = "1.0.1";
 
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "token",
-				null);
-
+		VaultSettings settings = new VaultSettings(address, namespace, "token");
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
 		VaultSecretService service = new VaultSecretService(vault);
-		
+
 		Map<String, String> secret = new HashMap<>();
 		secret.put(key, value);
 
-		service.writeKv2(mount, path, secret);
+		service.writeKv2Secret(mount, path, secret);
 
-		Map<String, String> data = service.readKv2(mount, path);
+		Map<String, String> data = service.readKv2Secret(mount, path);
 
 		assertNotNull(data, "Vault secret data should not be null");
 		assertEquals(data.get(key), value);
-		
-		service.deleteKv2Key(mount, path, key);
-		
-		Map<String, String> dataAfterKeyDelete = service.readKv2(mount, path);
-		assertTrue(dataAfterKeyDelete == null || !dataAfterKeyDelete.containsKey("version"), "Vault key should be deleted");
 
-		service.deleteKv2(mount, path);
+		service.deleteKv2Secret(mount, path, key);
 
-		Map<String, String> deletedData = service.readKv2(mount, path);
+		Map<String, String> dataAfterKeyDelete = service.readKv2Secret(mount, path);
+		assertTrue(dataAfterKeyDelete == null || !dataAfterKeyDelete.containsKey("version"),
+				"Vault key should be deleted");
+
+		service.deleteKv2Secret(mount, path);
+
+		Map<String, String> deletedData = service.readKv2Secret(mount, path);
 
 		assertTrue(deletedData == null || deletedData.isEmpty(), "Vault secret should be deleted");
 	}
-	
+
 	@Test
 	public void canReadShellValuesFromVaultSecret() throws Exception {
 		String mount = optionalProperty("VAULT_KV_MOUNT", DEFAULT_KV_MOUNT);
 		String path = "io/jpostman";
-		
-		VaultSettings settings = new VaultSettings(optionalProperty("VAULT_ADDR", DEFAULT_VAULT_ADDR), null, "token",
-				null);
+
+		VaultSettings settings = new VaultSettings(address, namespace, "token");
 		Vault vault = vaultClientFactory.createVaultWithAuth(settings);
 		VaultSecretService service = new VaultSecretService(vault);
 
-		String script = ""
-				+ "export KEY1=VALUE1\n"
-				+ "export KEY2=VALUE2\n";
+		String script = "" + "export KEY1=VALUE1\n" + "export KEY2=VALUE2\n";
 
 		Map<String, String> secret = new HashMap<>();
 		secret.put("script", script);
 
-		service.writeKv2(mount, path, secret);
+		service.writeKv2Secret(mount, path, secret);
 
-		Map<String, String> shellValues = service.readShellValues(mount, path);
+		Map<String, String> shellValues = service.readKv2ShellExports(mount, path, "script");
 
 		assertEquals(shellValues.get("KEY1"), "VALUE1");
 		assertEquals(shellValues.get("KEY2"), "VALUE2");
 
-		service.deleteKv2(mount, path);
+		service.deleteKv2Secret(mount, path);
 	}
 
 	private void assertValidVaultLogin(Vault vault) throws Exception {

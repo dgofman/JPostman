@@ -19,6 +19,43 @@ public class VaultSettings {
 	private final String authMethod;
 	private final String authPath;
 
+	private String authToken;
+
+	/**
+	 * Returns the authenticated Vault token after login.
+	 *
+	 * @return authenticated Vault token, or {@code null} before login
+	 */
+	public String authToken() {
+	    return authToken;
+	}
+
+	/**
+	 * Stores the authenticated Vault token.
+	 *
+	 * @param authToken authenticated Vault token
+	 */
+	void authToken(String authToken) {
+	    this.authToken = authToken;
+	}
+
+
+	/**
+	 * Creates Vault settings.
+	 *
+	 * @param address    Vault server address, for example
+	 *                   {@code http://127.0.0.1:8200}
+	 * @param namespace  optional Vault Enterprise namespace, or {@code null} when
+	 *                   not used
+	 * @param authMethod authentication method name, for example {@code token},
+	 *                   {@code userpass}, {@code approle}, {@code jwt},
+	 *                   {@code github}, or {@code ldap}
+	 */
+	public VaultSettings(String address, String namespace, String authMethod) {
+		this(address, namespace, authMethod, authMethod);
+	}
+	
+	
 	/**
 	 * Creates Vault settings.
 	 *
@@ -89,33 +126,9 @@ public class VaultSettings {
 	 * @param defaultValue value to return when the setting is missing or blank
 	 * @return resolved setting value or {@code defaultValue}
 	 */
-	public String optional(String name, String defaultValue) {
+	public String get(String name, String defaultValue) {
 		String value = get(name);
 		return value == null || value.isBlank() ? defaultValue : value;
-	}
-
-	/**
-	 * Returns a required setting from Java system properties or environment
-	 * variables.
-	 *
-	 * <p>
-	 * System properties have priority over environment variables. If the setting is
-	 * missing or blank, an {@link IllegalArgumentException} is thrown with the
-	 * missing setting name.
-	 * </p>
-	 *
-	 * @param name setting name to resolve
-	 * @return resolved setting value
-	 * @throws IllegalArgumentException if the setting is missing or blank
-	 */
-	public String required(String name) {
-		String value = get(name);
-
-		if (value == null || value.isBlank()) {
-			throw new IllegalArgumentException("Missing required Vault setting: " + name);
-		}
-
-		return value;
 	}
 
 	/**
@@ -125,7 +138,7 @@ public class VaultSettings {
 	 * @param name setting name to resolve
 	 * @return resolved setting value, or {@code null} when not found
 	 */
-	private String get(String name) {
+	public String get(String name) {
 		String value = System.getProperty(name);
 
 		if (value == null || value.isBlank()) {
